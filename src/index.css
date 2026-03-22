@@ -91,7 +91,19 @@ html, body, #root {
 .player-count { font-size:clamp(0.58rem,1.4vw,0.7rem); font-weight:800; color:var(--muted); }
 .hud-settings-btn { background:none; border:none; font-size:clamp(0.9rem,2vw,1.05rem); cursor:pointer; padding:2px; transition:transform 0.25s; }
 .hud-settings-btn:hover { transform:rotate(40deg); }
-@media (max-width:480px) and (orientation:portrait) { .hud-player,.player-count { display:none; } }
+/* 모바일 HUD: 로고·이름·인원수 숨김, 컴팩트하게 */
+@media (max-width:768px) and (pointer:coarse) {
+  .hud { padding:5px 10px; gap:6px; }
+  .hud-logo { display:none; }
+  .hud-player { display:none; }
+  .player-count { display:none; }
+  .hud-scores { gap:5px; }
+  .hud-score { font-size:0.7rem; }
+  .score-bar { margin:0 4px; }
+  .hud-level-wrap { gap:1px; }
+  .hud-xp-track { width:52px; }
+  .hud-upgrade-btn { display:inline-flex !important; }
+}
 
 /* Canvas */
 #pixi-container { flex:1; overflow:hidden; position:relative; cursor:crosshair; touch-action:none; }
@@ -107,15 +119,15 @@ html, body, #root {
 .reload-bar-track { width:140px; height:8px; border-radius:6px; background:rgba(255,255,255,0.22); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.18); }
 .reload-bar-fill  { height:100%; border-radius:6px; width:0%; }
 @media (max-width:768px) and (pointer:coarse) {
-  .reload-bar-wrap { bottom:clamp(155px,22vh,200px); }
-  .reload-bar-track { width:100px; height:6px; }
-  .reload-bar-label { font-size:0.55rem; }
+  .reload-bar-wrap { bottom:clamp(140px,18vh,180px); }
+  .reload-bar-track { width:110px; height:7px; }
+  .reload-bar-label { font-size:0.58rem; }
 }
 
 /* Ping */
 .overlay-hud { position:absolute; bottom:14px; right:14px; display:flex; flex-direction:column; align-items:flex-end; gap:5px; pointer-events:none; z-index:5; }
 .ping-badge { font-size:0.66rem; font-weight:800; color:var(--muted); }
-@media (max-width:768px) and (pointer:coarse) { .overlay-hud { bottom:clamp(155px,22vh,200px); right:8px; } }
+@media (max-width:768px) and (pointer:coarse) { .overlay-hud { bottom:clamp(140px,18vh,180px); right:8px; } }
 
 /* Controls hint */
 .controls-hint { position:absolute; bottom:12px; left:12px; font-size:0.66rem; font-weight:700; color:var(--muted); pointer-events:none; line-height:1.9; z-index:5; }
@@ -127,7 +139,7 @@ html, body, #root {
 .joystick-area.right { right:clamp(16px,4vw,32px); }
 .joystick-base { width:clamp(88px,18vw,112px); height:clamp(88px,18vw,112px); border-radius:50%; background:rgba(255,255,255,0.15); border:2.5px solid rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; position:relative; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12); }
 .joystick-stick { width:clamp(36px,7.5vw,46px); height:clamp(36px,7.5vw,46px); border-radius:50%; background:rgba(255,255,255,0.9); box-shadow:0 3px 14px rgba(0,0,0,0.2); position:absolute; pointer-events:none; top:50%; left:50%; transform:translate(-50%,-50%); }
-.joystick-label { position:absolute; bottom:-20px; left:50%; transform:translateX(-50%); font-size:clamp(0.55rem,1.5vw,0.62rem); font-weight:800; color:rgba(255,255,255,0.55); white-space:nowrap; pointer-events:none; }
+.joystick-label { position:absolute; bottom:-18px; left:50%; transform:translateX(-50%); font-size:clamp(0.55rem,1.5vw,0.62rem); font-weight:800; color:rgba(255,255,255,0.5); white-space:nowrap; pointer-events:none; display:none; }
 @media (orientation:portrait) { .joystick-area { bottom:clamp(20px,4vh,36px); } }
 
 /* Chat */
@@ -158,6 +170,10 @@ html, body, #root {
 
 /* ══ MINIMAP ══ */
 .minimap-wrap { position:absolute; top:10px; left:12px; border-radius:10px; overflow:hidden; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.18); border:2px solid rgba(255,255,255,0.5); transition:all 0.2s; z-index:10; }
+@media (max-width:768px) and (pointer:coarse) {
+  .minimap-wrap { top:auto; left:auto; bottom:140px; right:12px; }
+  .minimap-wrap.expanded { bottom:8px; right:8px; }
+}
 .minimap-wrap.expanded { border-radius:14px; box-shadow:0 4px 24px rgba(0,0,0,0.28); }
 .minimap-canvas { display:block; }
 .minimap-icon { position:absolute; bottom:4px; right:5px; font-size:0.65rem; color:rgba(255,255,255,0.8); font-weight:900; line-height:1; pointer-events:none; text-shadow:0 1px 3px rgba(0,0,0,0.5); }
@@ -178,7 +194,7 @@ html, body, #root {
 
 /* ══ ROUND END OVERLAY ══ */
 .round-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:50; backdrop-filter:blur(6px); animation:fadeIn 0.25s ease; }
-.round-result-card { background:var(--card); border-radius:24px; padding:28px 32px; box-shadow:0 8px 40px rgba(0,0,0,0.22); width:min(360px,90vw); display:flex; flex-direction:column; gap:16px; }
+.round-result-card { background:var(--card); border-radius:24px; padding:clamp(18px,4vw,28px) clamp(16px,5vw,32px); box-shadow:0 8px 40px rgba(0,0,0,0.22); width:min(360px,92vw); display:flex; flex-direction:column; gap:clamp(10px,2vh,16px); max-height:85vh; overflow-y:auto; }
 .round-result-badge { border-radius:12px; padding:10px 18px; color:#fff; font-size:1.3rem; font-weight:900; text-align:center; letter-spacing:0.04em; }
 .round-result-scores { display:flex; flex-direction:column; gap:6px; }
 .round-score-row { display:flex; align-items:center; gap:8px; font-size:0.85rem; font-weight:700; color:var(--muted); padding:4px 0; }
@@ -202,7 +218,11 @@ html, body, #root {
 /* ══ UPGRADE PANEL ══ */
 /* 미니맵(top:10px, left:12px, h=150px) 바로 아래에 고정 */
 .upgrade-panel { position:absolute; top:174px; left:12px; width:200px; background:rgba(255,255,255,0.92); backdrop-filter:blur(8px); border-radius:14px; padding:9px 10px 10px; box-shadow:0 2px 16px rgba(0,0,0,0.10); z-index:5; display:flex; flex-direction:column; gap:5px; }
-@media (max-width:768px) and (pointer:coarse) { .upgrade-panel { display:none; } }
+@media (max-width:768px) and (pointer:coarse) {
+  .upgrade-panel { display:none; }
+  /* kill-feed 모바일: 상단 중앙 */
+  .kill-feed { top:52px; left:50%; transform:translateX(-50%); width:max-content; max-width:80vw; align-items:center; }
+}
 .upgrade-header { display:flex; align-items:center; gap:5px; margin-bottom:2px; }
 .upgrade-title { font-size:0.62rem; font-weight:900; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; flex:1; }
 .upgrade-points-badge { font-size:0.62rem; font-weight:900; color:#fff; background:var(--blue); border-radius:20px; padding:1px 6px; flex-shrink:0; animation:pulse-upgrade 1.2s ease infinite; }
@@ -221,6 +241,33 @@ html, body, #root {
 .upgrade-btn.active:hover { opacity:0.88; transform:scale(1.08); }
 .upgrade-btn:disabled { cursor:default; }
 
-/* HUD 업그레이드 포인트 뱃지 */
-.hud-upgrade-btn { border:none; border-radius:20px; background:var(--blue); color:#fff; font-size:0.6rem; font-weight:900; cursor:pointer; padding:1px 6px; min-width:18px; height:16px; line-height:1; animation:pulse-upgrade 1.2s ease infinite; flex-shrink:0; }
+/* HUD 업그레이드 포인트 뱃지 — 하단 mob-upgrade CSS에서 정의 */
 @keyframes pulse-upgrade { 0%,100%{box-shadow:0 0 0 0 rgba(92,158,255,0.6);} 50%{box-shadow:0 0 0 5px rgba(92,158,255,0);} }
+
+/* ══ MOBILE UPGRADE SHEET ══ */
+.mob-upgrade-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.5); z-index:80; display:flex; align-items:flex-end; animation:fadeIn 0.18s ease; }
+.mob-upgrade-sheet { width:100%; background:var(--card); border-radius:22px 22px 0 0; padding:10px 18px 32px; display:flex; flex-direction:column; gap:10px; max-height:72vh; overflow-y:auto; animation:slideUpSheet 0.25s ease; }
+@keyframes slideUpSheet { from{transform:translateY(100%);} to{transform:translateY(0);} }
+.mob-upgrade-handle { width:36px; height:4px; border-radius:2px; background:#DDD; margin:0 auto 2px; flex-shrink:0; }
+.mob-upgrade-header { display:flex; align-items:center; gap:8px; }
+.mob-upgrade-title { font-size:1rem; font-weight:900; flex:1; }
+.mob-upgrade-pts { font-size:0.78rem; font-weight:900; color:#fff; background:var(--blue); border-radius:20px; padding:2px 10px; animation:pulse-upgrade 1.2s ease infinite; }
+.mob-upgrade-close { background:#F0F0F0; border:none; border-radius:50%; width:32px; height:32px; font-size:1rem; color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.mob-upgrade-list { display:flex; flex-direction:column; gap:8px; }
+.mob-upgrade-row { display:flex; align-items:center; gap:12px; background:#F5F5F5; border-radius:14px; padding:12px 14px; }
+.mob-upgrade-row.maxed { opacity:0.5; }
+.mob-upgrade-icon { font-size:1.6rem; width:36px; text-align:center; flex-shrink:0; }
+.mob-upgrade-info { flex:1; min-width:0; }
+.mob-upgrade-name { font-size:0.88rem; font-weight:900; color:var(--text); }
+.mob-upgrade-desc { font-size:0.72rem; font-weight:700; color:var(--muted); margin-top:1px; }
+.mob-upgrade-stars { display:flex; gap:3px; margin-top:5px; }
+.mob-upgrade-star { width:14px; height:5px; border-radius:3px; background:#E0E0E0; transition:background 0.2s; }
+.mob-upgrade-star.filled { background:var(--blue); }
+.mob-upgrade-btn { width:40px; height:40px; border-radius:12px; border:none; font-size:1.2rem; font-weight:900; cursor:pointer; flex-shrink:0; background:#E8E8E8; color:#BBB; transition:all 0.15s; }
+.mob-upgrade-btn.active { background:var(--blue); color:#fff; box-shadow:0 3px 12px rgba(92,158,255,0.45); }
+.mob-upgrade-btn.active:active { transform:scale(0.93); }
+.mob-upgrade-btn:disabled { cursor:default; }
+
+/* hud-upgrade-btn 기본: 모바일에서만 보임 */
+.hud-upgrade-btn { border:none; border-radius:20px; background:var(--blue); color:#fff; font-size:0.6rem; font-weight:900; cursor:pointer; padding:1px 6px; min-width:18px; height:16px; line-height:1; animation:pulse-upgrade 1.2s ease infinite; flex-shrink:0; display:none; }
+@media (min-width:769px), (pointer:fine) { .hud-upgrade-btn { display:inline-flex; align-items:center; justify-content:center; } }
