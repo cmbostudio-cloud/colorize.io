@@ -210,6 +210,20 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[leaderboard,setLeaderboard]=useState([]);
   const[minimapExpanded,setMinimapExpanded]=useState(false);
 
+  // 라운드
+  const[roundPhase,setRoundPhase]=useState('playing'); // 'playing'|'break'
+  const[roundNum,setRoundNum]=useState(1);
+  const[roundEnd,setRoundEnd]=useState(null); // { winner, teamTiles, results, breakMs }
+  const roundEndsAtRef=useRef(Date.now()+600000);
+
+  // 레벨/XP
+  const[level,setLevel]=useState(1);
+  const[xp,setXp]=useState(0);
+  const[levelUpAnim,setLevelUpAnim]=useState(null); // 레벨업 연출용
+
+  // HUD 타이머 DOM 직접 조작
+  const timerRef=useRef(null);
+
   // 미니맵용 ref (React re-render 없이 매 프레임 직접 읽음)
   const minimapTilesRef=useRef([]);
   const minimapPlayersRef=useRef({});
@@ -425,10 +439,12 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     });
 
     // init — 고스트 방지: GFX 전체 교체
-    socket.on('init',({id,tiles,players,invincibleMs})=>{
+    socket.on('init',({id,tiles,players,invincibleMs,round,xp:initXp,level:initLevel})=>{
       s.myId=id;
       myIdRef.current=id;
       if(tiles){s.tiles=tiles;minimapTilesRef.current=s.tiles;}
+      if(round){roundEndsAtRef.current=round.endsAt;setRoundNum(round.num);setRoundPhase(round.phase);}
+      if(initXp!=null){setXp(initXp);setLevel(initLevel??1);}
       // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
         const e=playerGfxMap.current[pid]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[pid];
@@ -475,16 +491,50 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     // 서버 강제 위치 보정 (텔레포트 감지 시)
     socket.on('force_position',({x,y})=>{const me=s.players[s.myId];if(me){me.x=x;me.y=y;me.tx=x;me.ty=y;}});
     // 개인 순위표
-    socket.on('leaderboard',({leaderboard,teamTiles})=>{
+    socket.on('leaderboard',({leaderboard,teamTiles,round:rd})=>{
       setLeaderboard(leaderboard);
       topPlayerIdRef.current = leaderboard[0]?.id ?? null;
       if(teamTiles) setScores({red:teamTiles.red??0,blue:teamTiles.blue??0,green:teamTiles.green??0});
+      if(rd){
+        if(rd.timeLeft!=null) roundEndsAtRef.current = Date.now() + rd.timeLeft;
+        setRoundNum(rd.num);
+        setRoundPhase(rd.phase);
+      }
     });
+
+    // 라운드 종료
+    socket.on('round_end',({winner,teamTiles,results,breakMs,roundNum:rn})=>{
+      setRoundPhase('break');
+      setRoundNum(rn);
+      setRoundEnd({winner,teamTiles,results,breakMs});
+    });
+
+    // 새 라운드 시작
+    socket.on('round_start',({roundNum:rn,endsAt})=>{
+      setRoundPhase('playing');
+      setRoundNum(rn);
+      setRoundEnd(null);
+      roundEndsAtRef.current=endsAt;
+    });
+
+    // 맵 초기화 (라운드 리셋)
+    socket.on('round_reset',({tiles:newTiles})=>{
+      if(newTiles){s.tiles=newTiles;minimapTilesRef.current=s.tiles;}
+      buildTiles(tileLayer,s.tiles);
+      calcScores(s.tiles);
+    });
+
+    // 레벨업
+    socket.on('level_up',({level:lv,xp:newXp})=>{
+      setLevel(lv);
+      setXp(newXp);
+      setLevelUpAnim(lv);
+      setTimeout(()=>setLevelUpAnim(null),2500);
+    });
+
     socket.on('chat',({id,name,team,text})=>{
       const color=TEAM_CSS[team]??'#999';
       setChatMsgs(msgs=>[...msgs.slice(-49),{id:Date.now()+Math.random(),name,color,text}]);
-      // 해당 플레이어 찾아서 말풍선 표시
-      // [FIX] id 기반 정확한 매칭 (동명이인 버그 수정)
       const sender=id&&s.players[id]?s.players[id]:Object.values(s.players).find(p=>p.name===name&&p.team===team);
       if(sender){
         const teamHex=TEAM_COLORS[team]??0x5C9EFF;
@@ -495,6 +545,17 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     let pingT=0;
     const pingIv=setInterval(()=>{pingT=Date.now();socket.emit('ping_c');},2000);
     socket.on('pong_c',()=>setPing(Date.now()-pingT));
+
+    // 타이머 DOM 직접 업데이트 (1초마다)
+    const timerIv=setInterval(()=>{
+      if(!timerRef.current) return;
+      const left=Math.max(0,roundEndsAtRef.current-Date.now());
+      const m=Math.floor(left/60000);
+      const s2=Math.floor((left%60000)/1000);
+      timerRef.current.textContent=`${m}:${String(s2).padStart(2,'0')}`;
+      // 1분 미만이면 빨간색
+      timerRef.current.style.color=left<60000?'#FF5C5C':'inherit';
+    },1000);
 
     const onKD=e=>{
       // 채팅 입력창 포커스 중엔 게임 키 이벤트 무시
@@ -608,6 +669,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
 
     return()=>{
       clearInterval(pingIv);
+      clearInterval(timerIv);
       killTimers.current.forEach(clearTimeout); killTimers.current=[];
       // 말풍선 전부 정리
       Object.keys(chatBubbles.current).forEach(id=>removeChatBubble(id));
@@ -629,13 +691,28 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const gp=(scores.green/total*100).toFixed(1);
   const tc=tcRef.current;
 
+  // XP 바 계산
+  const curLvXp = level*level*10;
+  const nxtLvXp = (level+1)*(level+1)*10;
+  const xpPct   = Math.min(100,((xp-curLvXp)/(nxtLvXp-curLvXp)*100)).toFixed(1);
+
   return(
     <div className="game-wrapper">
       <div className="hud">
         <div className="hud-logo"><div className="hud-logo-circle"/><span style={{color:'#555',fontWeight:900}}>colorize</span><span style={{color:'#999',fontSize:'0.8em'}}>.io</span></div>
+        {/* 타이머 */}
+        <div className="hud-timer-wrap">
+          <div className="hud-round-num">R{roundNum}</div>
+          <div className="hud-timer" ref={timerRef}>10:00</div>
+        </div>
         <div className="score-bar"><div className="score-seg" style={{width:`${rp}%`,background:TEAM_CSS.red}}/><div className="score-seg" style={{width:`${bp}%`,background:TEAM_CSS.blue}}/><div className="score-seg" style={{width:`${gp}%`,background:TEAM_CSS.green}}/></div>
         <div className="hud-scores">{['red','blue','green'].map(tm=><div className="hud-score" key={tm}><div className="hud-dot" style={{background:TEAM_CSS[tm]}}/>{scores[tm]}</div>)}</div>
         <div className="hud-right">
+          {/* 레벨 + XP 바 */}
+          <div className="hud-level-wrap">
+            <div className="hud-level">Lv.{level}</div>
+            <div className="hud-xp-track"><div className="hud-xp-fill" style={{width:`${xpPct}%`,background:TEAM_CSS[playerTeam]}}/></div>
+          </div>
           <div className="hud-player"><span>{playerName}</span> · {t.team_names[playerTeam]}</div>
           <div className="player-count">👥 {playerCount}</div>
           <button className="hud-settings-btn" onClick={()=>setShowSettings(true)}>⚙️</button>
@@ -703,6 +780,48 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
             <div className="joystick-area left" ref={leftJoyRef}><div className="joystick-base"><div className="joystick-stick"/></div><div className="joystick-label">{t.joystick_move}</div></div>
             <div className="joystick-area right" ref={rightJoyRef}><div className="joystick-base"><div className="joystick-stick"/></div><div className="joystick-label">{t.joystick_shoot}</div></div>
           </>
+        )}
+
+        {/* 라운드 종료 오버레이 */}
+        {roundEnd&&(
+          <div className="round-overlay">
+            <div className="round-result-card">
+              <div className="round-result-badge" style={{background:TEAM_CSS[roundEnd.winner]??'#999'}}>
+                {t.team_names[roundEnd.winner]} WIN!
+              </div>
+              <div className="round-result-scores">
+                {['red','blue','green'].map(tm=>(
+                  <div key={tm} className={`round-score-row${tm===roundEnd.winner?' winner':''}`}>
+                    <div className="round-score-dot" style={{background:TEAM_CSS[tm]}}/>
+                    <span>{t.team_names[tm]}</span>
+                    <span className="round-score-val">{roundEnd.teamTiles[tm]??0}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="round-result-list">
+                {roundEnd.results.slice(0,5).map((p,i)=>(
+                  <div key={p.id} className="round-result-row">
+                    <span className="round-result-rank">{i+1}</span>
+                    <div className="round-score-dot" style={{background:TEAM_CSS[p.team]??'#999',width:8,height:8,borderRadius:'50%',flexShrink:0}}/>
+                    <span className="round-result-name">{p.name}</span>
+                    <span className="round-result-lv">Lv.{p.level}</span>
+                    <span className="round-result-tile">{t.tiles_unit(p.tiles)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="round-break-msg">
+                {roundPhase==='break'?`Next round in ${Math.ceil((roundEnd.breakMs??15000)/1000)}s...`:'Starting...'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 레벨업 연출 */}
+        {levelUpAnim&&(
+          <div className="levelup-anim">
+            <div className="levelup-text">LEVEL UP!</div>
+            <div className="levelup-num">Lv.{levelUpAnim}</div>
+          </div>
         )}
       </div>
 
