@@ -153,24 +153,3 @@ html, body, #root {
 .leaderboard-name.is-me { color:var(--blue); }
 .leaderboard-score { font-size:0.68rem; font-weight:900; color:var(--muted); flex-shrink:0; }
 @media (max-width:768px) and (pointer:coarse) { .leaderboard { display:none; } }
-
-/* ══ ROUND RESULT ══ */
-.round-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:200; backdrop-filter:blur(8px); animation:fadeIn 0.25s ease; }
-.round-card { background:var(--card); border-radius:28px; padding:32px 36px; box-shadow:0 8px 48px rgba(0,0,0,0.18); width:min(420px,94vw); display:flex; flex-direction:column; gap:20px; }
-.round-card-title { font-size:1.1rem; font-weight:900; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; text-align:center; }
-.round-card-round { font-size:2rem; font-weight:900; text-align:center; letter-spacing:-1px; }
-.round-section-label { font-size:0.72rem; font-weight:800; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px; }
-.round-team-ranks { display:flex; gap:8px; }
-.round-team-item { flex:1; border-radius:14px; padding:12px 8px; display:flex; flex-direction:column; align-items:center; gap:4px; }
-.round-team-rank { font-size:1.1rem; font-weight:900; }
-.round-team-name { font-size:0.78rem; font-weight:800; }
-.round-team-tiles { font-size:0.7rem; font-weight:700; opacity:0.75; }
-.round-player-ranks { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; scrollbar-width:none; }
-.round-player-ranks::-webkit-scrollbar { display:none; }
-.round-player-item { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:10px; background:#F7F5F0; }
-.round-player-rank-num { font-size:0.78rem; font-weight:900; color:var(--muted); width:18px; text-align:center; flex-shrink:0; }
-.round-player-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-.round-player-name { flex:1; font-size:0.82rem; font-weight:800; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.round-player-gained { font-size:0.78rem; font-weight:900; color:var(--muted); flex-shrink:0; }
-.round-player-item.is-me { background:#EFF5FF; outline:2px solid var(--blue); }
-.round-countdown { text-align:center; font-size:0.78rem; font-weight:800; color:var(--muted); }
