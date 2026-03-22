@@ -750,13 +750,18 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       const _st=getStats(upgradesRef.current);
       const elapsed=s.lastShot>0?now-s.lastShot:_st.shootInterval;
       if(elapsed<_st.shootInterval) return; // 쿨다운 중이면 무시
+      const invincible=me.invincibleUntil&&now<me.invincibleUntil;
+      if(invincible) return; // 무적 중 발사 불가
+      const connected=socket.connected&&s.myId;
+      if(!connected) return;
       const mwx=s.mousePos.x+s.camX, mwy=s.mousePos.y+s.camY;
       const len=Math.hypot(mwx-me.x,mwy-me.y)||1;
       const sdx=((mwx-me.x)/len)*_st.bulletSpeed;
       const sdy=((mwy-me.y)/len)*_st.bulletSpeed;
       s.lastShot=now;
+      s.justShot=true; // ticker 중복 방지 플래그
       socket.emit('move',{x:me.x,y:me.y});
-      socket.emit('shoot',{dx:sdx,dy:sdy});
+      socket.emit('shoot',{dx:sdx,dy:sdy,speedMult:_st.bulletSpeed/12});
     };
     const onMU=()=>{s.mouseDown=false;};
     cv.addEventListener('mousemove',onMM); cv.addEventListener('mousedown',onMD);
@@ -821,10 +826,14 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         }
 
         // 발사 (연결됨 + 장전 완료 + 무적 해제 시에만)
-        let shoot=false,sdx=0,sdy=0;
-        if(!mobile&&s.mouseDown){const mwx=s.mousePos.x+s.camX,mwy=s.mousePos.y+s.camY;const len=Math.hypot(mwx-me.x,mwy-me.y)||1;sdx=((mwx-me.x)/len)*st.bulletSpeed;sdy=((mwy-me.y)/len)*st.bulletSpeed;shoot=true;}
-        else if(mobile){const sv=shootVec.current;if(sv.active){const mag=Math.hypot(sv.x,sv.y);if(mag>0.1){const len=mag||1;sdx=(sv.x/len)*st.bulletSpeed;sdy=(sv.y/len)*st.bulletSpeed;shoot=true;}}}
-        if(connected&&shoot&&ready&&!invincible){s.lastShot=now;socket.emit('move',{x:me.x,y:me.y});socket.emit('shoot',{dx:sdx,dy:sdy});}
+        // justShot: onMD가 이미 이 프레임에 발사했으면 ticker는 skip
+        if(s.justShot){ s.justShot=false; }
+        else {
+          let shoot=false,sdx=0,sdy=0;
+          if(!mobile&&s.mouseDown){const mwx=s.mousePos.x+s.camX,mwy=s.mousePos.y+s.camY;const len=Math.hypot(mwx-me.x,mwy-me.y)||1;sdx=((mwx-me.x)/len)*st.bulletSpeed;sdy=((mwy-me.y)/len)*st.bulletSpeed;shoot=true;}
+          else if(mobile){const sv=shootVec.current;if(sv.active){const mag=Math.hypot(sv.x,sv.y);if(mag>0.1){const len=mag||1;sdx=(sv.x/len)*st.bulletSpeed;sdy=(sv.y/len)*st.bulletSpeed;shoot=true;}}}
+          if(connected&&shoot&&ready&&!invincible){s.lastShot=now;socket.emit('move',{x:me.x,y:me.y});socket.emit('shoot',{dx:sdx,dy:sdy,speedMult:st.bulletSpeed/12});}
+        }
 
         s.camX=lerp(s.camX,me.x-app.screen.width/2,0.1);
         s.camY=lerp(s.camY,me.y-app.screen.height/2,0.1);
