@@ -445,10 +445,18 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     });
 
     // init — 고스트 방지: GFX 전체 교체
-    socket.on('init',({id,tiles,players,invincibleMs,round,xp:initXp,level:initLevel})=>{
+    socket.on('init',({id,tiles:rawTiles,tilesPacked,players,invincibleMs,round,xp:initXp,level:initLevel})=>{
       s.myId=id;
       myIdRef.current=id;
-      if(tiles){s.tiles=tiles;minimapTilesRef.current=s.tiles;}
+      // tilesPacked(희소 압축) 또는 rawTiles(전체 배열) 둘 다 지원
+      if(tilesPacked){
+        const t=Array.from({length:GRID_H},()=>Array(GRID_W).fill(null));
+        tilesPacked.forEach(({x,y,team})=>{if(t[y])t[y][x]=team;});
+        s.tiles=t;
+      } else if(rawTiles){
+        s.tiles=rawTiles;
+      }
+      minimapTilesRef.current=s.tiles;
       if(round){roundEndsAtRef.current=round.endsAt;setRoundNum(round.num);setRoundPhase(round.phase);}
       if(initXp!=null){setXp(initXp);setLevel(initLevel??1);}
       // 기존 GFX 전부 제거
@@ -526,8 +534,16 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     });
 
     // 맵 초기화 (라운드 리셋)
-    socket.on('round_reset',({tiles:newTiles})=>{
-      s.tiles=newTiles||Array.from({length:GRID_H},()=>Array(GRID_W).fill(null));
+    socket.on('round_reset',({tiles:newTiles,tilesPacked})=>{
+      if(tilesPacked!=null){
+        const t=Array.from({length:GRID_H},()=>Array(GRID_W).fill(null));
+        tilesPacked.forEach(({x,y,team})=>{if(t[y])t[y][x]=team;});
+        s.tiles=t;
+      } else if(newTiles){
+        s.tiles=newTiles;
+      } else {
+        s.tiles=Array.from({length:GRID_H},()=>Array(GRID_W).fill(null));
+      }
       minimapTilesRef.current=s.tiles;
       // 총알 GFX 전부 정리
       Object.keys(bulletGfxMap.current).forEach(bid=>{
