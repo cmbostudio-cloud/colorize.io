@@ -21,6 +21,55 @@ const BULLET_LIFETIME=1000, BULLET_FADE_START=750, REBUILD_THRESHOLD=80;
 const TEAM_COLORS={red:0xFF5C5C,blue:0x5C9EFF,green:0x5CDB95};
 const TEAM_CSS   ={red:'#FF5C5C',blue:'#5C9EFF',green:'#5CDB95'};
 function lerp(a,b,t){return a+(b-a)*t;}
+
+/* ══════════════ UPGRADE SYSTEM ══════════════ */
+const UPGRADES = [
+  {
+    id: 'speed',
+    icon: '⚡',
+    label: { en:'Move Speed', ko:'이동 속도', ja:'移動速度', zh:'移动速度' },
+    desc:  { en:'Move faster across the map', ko:'더 빠르게 이동합니다', ja:'マップ上で速く動く', zh:'在地图上移动更快' },
+    maxLv: 5,
+    effect: lv => ({ moveSpeed: MOVE_SPEED * (1 + lv * 0.12) }),
+  },
+  {
+    id: 'firerate',
+    icon: '🔥',
+    label: { en:'Fire Rate', ko:'연사 속도', ja:'連射速度', zh:'射速' },
+    desc:  { en:'Reduce shooting cooldown', ko:'발사 쿨다운을 줄입니다', ja:'発射クールダウン短縮', zh:'缩短射击冷却' },
+    maxLv: 5,
+    effect: lv => ({ shootInterval: SHOOT_INTERVAL * (1 - lv * 0.12) }),
+  },
+  {
+    id: 'bulletspeed',
+    icon: '💨',
+    label: { en:'Bullet Speed', ko:'총알 속도', ja:'弾速', zh:'弹速' },
+    desc:  { en:'Bullets travel faster', ko:'총알이 더 빠르게 날아갑니다', ja:'弾がより速く飛ぶ', zh:'子弹飞行速度更快' },
+    maxLv: 5,
+    effect: lv => ({ bulletSpeed: BULLET_SPEED * (1 + lv * 0.15) }),
+  },
+  {
+    id: 'range',
+    icon: '🎯',
+    label: { en:'Range', ko:'사거리', ja:'射程', zh:'射程' },
+    desc:  { en:'Bullets travel further', ko:'총알이 더 멀리 날아갑니다', ja:'弾がより遠くまで飛ぶ', zh:'子弹射程更远' },
+    maxLv: 5,
+    effect: lv => ({ bulletLifetime: BULLET_LIFETIME * (1 + lv * 0.2) }),
+  },
+  {
+    id: 'shield',
+    icon: '🛡️',
+    label: { en:'Respawn Shield', ko:'리스폰 보호', ja:'復活シールド', zh:'重生护盾' },
+    desc:  { en:'Longer invincibility on respawn', ko:'리스폰 후 무적 시간이 늘어납니다', ja:'復活後の無敵時間延長', zh:'复活后无敌时间更长' },
+    maxLv: 5,
+    effect: lv => ({ invincibleMs: 3000 + lv * 1000 }),
+  },
+];
+
+function calcStatPoints(level) {
+  // 레벨업마다 1포인트, 레벨 1은 0포인트
+  return Math.max(0, level - 1);
+}
 function isMobile(){return('ontouchstart'in window||navigator.maxTouchPoints>0)&&!/Windows|Macintosh|Linux(?!.*Android)/i.test(navigator.userAgent);}
 
 /* ══════════════ LOGO ══════════════ */
@@ -140,6 +189,63 @@ function ChatBox({lang,msgs,input,setInput,onSend}){
   );
 }
 
+/* ══════════════ UPGRADE PANEL ══════════════ */
+function UpgradePanel({lang,level,upgrades,onUpgrade,onClose}){
+  const t=LANGS[lang];
+  const totalPoints=calcStatPoints(level);
+  const spent=Object.values(upgrades).reduce((a,b)=>a+b,0);
+  const available=totalPoints-spent;
+  const teamColor='#5C9EFF';
+  return(
+    <div className="upgrade-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="upgrade-panel">
+        <div className="upgrade-header">
+          <div className="upgrade-title">
+            <span className="upgrade-title-icon">⬆️</span>
+            {lang==='ko'?'능력치 강화':lang==='ja'?'スキルアップ':lang==='zh'?'能力升级':'Upgrade Skills'}
+          </div>
+          <div className="upgrade-points-badge">
+            {available > 0
+              ? <><span className="upgrade-pts-num">{available}</span>{lang==='ko'?' 포인트 남음':lang==='ja'?' pt残り':lang==='zh'?' 点可用':' pts left'}</>
+              : <span style={{color:'#BBB'}}>{lang==='ko'?'포인트 없음':lang==='ja'?'ポイントなし':lang==='zh'?'无可用点数':'No points'}</span>
+            }
+          </div>
+          <button className="upgrade-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="upgrade-list">
+          {UPGRADES.map(up=>{
+            const curLv=upgrades[up.id]||0;
+            const maxed=curLv>=up.maxLv;
+            const canUp=available>0&&!maxed;
+            return(
+              <div key={up.id} className={`upgrade-row${maxed?' maxed':''}`}>
+                <div className="upgrade-icon">{up.icon}</div>
+                <div className="upgrade-info">
+                  <div className="upgrade-name">{up.label[lang]||up.label.en}</div>
+                  <div className="upgrade-desc">{up.desc[lang]||up.desc.en}</div>
+                  <div className="upgrade-stars">
+                    {Array.from({length:up.maxLv}).map((_,i)=>(
+                      <div key={i} className={`upgrade-star${i<curLv?' filled':''}`}/>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  className={`upgrade-btn${canUp?' active':''}`}
+                  onClick={()=>canUp&&onUpgrade(up.id)}
+                  disabled={!canUp}
+                >
+                  {maxed?'MAX':'＋'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {available===0&&<div className="upgrade-footer">{lang==='ko'?'레벨업 시 포인트를 얻습니다':lang==='ja'?'レベルアップでポイントを獲得':lang==='zh'?'升级获得点数':'Earn points by leveling up'}</div>}
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════ MINIMAP ══════════════ */
 function MiniMap({tilesRef,playersRef,myTeam,myIdRef,expanded,onToggle}){
   const canvasRef=useRef(null);
@@ -227,6 +333,24 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const levelRef=useRef(1);
   const xpRef=useRef(0);
   const[levelUpAnim,setLevelUpAnim]=useState(null); // 레벨업 연출용
+
+  // 업그레이드 시스템
+  // upgrades: { speed:0, firerate:0, bulletspeed:0, range:0, shield:0 }
+  const[upgrades,setUpgrades]=useState({speed:0,firerate:0,bulletspeed:0,range:0,shield:0});
+  const[showUpgradePanel,setShowUpgradePanel]=useState(false);
+  const upgradesRef=useRef({speed:0,firerate:0,bulletspeed:0,range:0,shield:0});
+
+  // 스탯: upgrades ref에서 실시간 계산
+  function getStats(ups){
+    const u=ups||upgradesRef.current;
+    return {
+      moveSpeed:       MOVE_SPEED      * (1 + (u.speed||0)       * 0.12),
+      shootInterval:   SHOOT_INTERVAL  * (1 - (u.firerate||0)    * 0.12),
+      bulletSpeed:     BULLET_SPEED    * (1 + (u.bulletspeed||0) * 0.15),
+      bulletLifetime:  BULLET_LIFETIME * (1 + (u.range||0)       * 0.20),
+      invincibleMs:    3000            + (u.shield||0)            * 1000,
+    };
+  }
 
   // HUD 타이머 DOM 직접 조작
   const timerRef=useRef(null);
@@ -462,6 +586,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       minimapTilesRef.current=s.tiles;
       if(round){roundEndsAtRef.current=round.endsAt;setRoundPhase(round.phase);}
       if(initXp!=null){setXp(initXp);setLevel(initLevel??1);xpRef.current=initXp;levelRef.current=initLevel??1;}
+      const emptyUps2={speed:0,firerate:0,bulletspeed:0,range:0,shield:0};
+      setUpgrades(emptyUps2); upgradesRef.current=emptyUps2; setShowUpgradePanel(false);
       // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
         const e=playerGfxMap.current[pid]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[pid];
@@ -531,6 +657,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       setRoundEnd(null);
       roundEndsAtRef.current=endsAt;
       setXp(0); setLevel(1); xpRef.current=0; levelRef.current=1;
+      const emptyUps={speed:0,firerate:0,bulletspeed:0,range:0,shield:0};
+      setUpgrades(emptyUps); upgradesRef.current=emptyUps; setShowUpgradePanel(false);
     });
 
     // 맵 초기화 (라운드 리셋)
@@ -563,6 +691,13 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       if(leveled){
         setLevelUpAnim(newLv);
         setTimeout(()=>setLevelUpAnim(null),2500);
+        // 업그레이드 패널 열기 (미할당 포인트 있을 때만)
+        setUpgrades(prev=>{
+          const totalSpent=Object.values(prev).reduce((a,b)=>a+b,0);
+          const totalPoints=calcStatPoints(newLv);
+          if(totalPoints>totalSpent) setShowUpgradePanel(true);
+          return prev;
+        });
       }
     });
 
@@ -612,12 +747,13 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       // 마우스를 빠르게 클릭할 때 ticker가 놓치는 경우 대비 → 즉시 발사 시도
       const me=s.players[s.myId]; if(!me) return;
       const now=Date.now();
-      const elapsed=s.lastShot>0?now-s.lastShot:SHOOT_INTERVAL;
-      if(elapsed<SHOOT_INTERVAL) return; // 쿨다운 중이면 무시
+      const _st=getStats(upgradesRef.current);
+      const elapsed=s.lastShot>0?now-s.lastShot:_st.shootInterval;
+      if(elapsed<_st.shootInterval) return; // 쿨다운 중이면 무시
       const mwx=s.mousePos.x+s.camX, mwy=s.mousePos.y+s.camY;
       const len=Math.hypot(mwx-me.x,mwy-me.y)||1;
-      const sdx=((mwx-me.x)/len)*BULLET_SPEED;
-      const sdy=((mwy-me.y)/len)*BULLET_SPEED;
+      const sdx=((mwx-me.x)/len)*_st.bulletSpeed;
+      const sdy=((mwy-me.y)/len)*_st.bulletSpeed;
       s.lastShot=now;
       socket.emit('move',{x:me.x,y:me.y});
       socket.emit('shoot',{dx:sdx,dy:sdy});
@@ -631,9 +767,11 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       // 소켓 연결 끊긴 동안엔 서버 emit 전부 중단
       const connected=socket.connected&&s.myId;
       if(me){
+        // 업그레이드 스탯 매 프레임 계산
+        const st=getStats(upgradesRef.current);
         let dx=0,dy=0;
-        if(!mobile){if(s.keys['KeyW']||s.keys['ArrowUp'])dy-=MOVE_SPEED;if(s.keys['KeyS']||s.keys['ArrowDown'])dy+=MOVE_SPEED;if(s.keys['KeyA']||s.keys['ArrowLeft'])dx-=MOVE_SPEED;if(s.keys['KeyD']||s.keys['ArrowRight'])dx+=MOVE_SPEED;}
-        else{const mv=moveVec.current;if(mv.active){dx=mv.x*MOVE_SPEED;dy=mv.y*MOVE_SPEED;}}
+        if(!mobile){if(s.keys['KeyW']||s.keys['ArrowUp'])dy-=st.moveSpeed;if(s.keys['KeyS']||s.keys['ArrowDown'])dy+=st.moveSpeed;if(s.keys['KeyA']||s.keys['ArrowLeft'])dx-=st.moveSpeed;if(s.keys['KeyD']||s.keys['ArrowRight'])dx+=st.moveSpeed;}
+        else{const mv=moveVec.current;if(mv.active){dx=mv.x*st.moveSpeed;dy=mv.y*st.moveSpeed;}}
         if(dx&&dy){dx*=0.707;dy*=0.707;}
         me.x=Math.max(PLAYER_RADIUS,Math.min(GRID_W*TILE_SIZE-PLAYER_RADIUS,me.x+dx));
         me.y=Math.max(PLAYER_RADIUS,Math.min(GRID_H*TILE_SIZE-PLAYER_RADIUS,me.y+dy));
@@ -644,8 +782,8 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         }
 
         // 장전 진행률 — DOM 직접 조작 (React state 없이 60fps 완전 부드럽게)
-        const elapsed=s.lastShot>0?now-s.lastShot:SHOOT_INTERVAL;
-        const pct=Math.min(1,elapsed/SHOOT_INTERVAL);
+        const elapsed=s.lastShot>0?now-s.lastShot:st.shootInterval;
+        const pct=Math.min(1,elapsed/st.shootInterval);
         const ready=pct>=1;
         const invincible=me.invincibleUntil&&now<me.invincibleUntil;
         if(reloadFillRef.current){
@@ -684,8 +822,8 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
 
         // 발사 (연결됨 + 장전 완료 + 무적 해제 시에만)
         let shoot=false,sdx=0,sdy=0;
-        if(!mobile&&s.mouseDown){const mwx=s.mousePos.x+s.camX,mwy=s.mousePos.y+s.camY;const len=Math.hypot(mwx-me.x,mwy-me.y)||1;sdx=((mwx-me.x)/len)*BULLET_SPEED;sdy=((mwy-me.y)/len)*BULLET_SPEED;shoot=true;}
-        else if(mobile){const sv=shootVec.current;if(sv.active){const mag=Math.hypot(sv.x,sv.y);if(mag>0.1){const len=mag||1;sdx=(sv.x/len)*BULLET_SPEED;sdy=(sv.y/len)*BULLET_SPEED;shoot=true;}}}
+        if(!mobile&&s.mouseDown){const mwx=s.mousePos.x+s.camX,mwy=s.mousePos.y+s.camY;const len=Math.hypot(mwx-me.x,mwy-me.y)||1;sdx=((mwx-me.x)/len)*st.bulletSpeed;sdy=((mwy-me.y)/len)*st.bulletSpeed;shoot=true;}
+        else if(mobile){const sv=shootVec.current;if(sv.active){const mag=Math.hypot(sv.x,sv.y);if(mag>0.1){const len=mag||1;sdx=(sv.x/len)*st.bulletSpeed;sdy=(sv.y/len)*st.bulletSpeed;shoot=true;}}}
         if(connected&&shoot&&ready&&!invincible){s.lastShot=now;socket.emit('move',{x:me.x,y:me.y});socket.emit('shoot',{dx:sdx,dy:sdy});}
 
         s.camX=lerp(s.camX,me.x-app.screen.width/2,0.1);
@@ -708,7 +846,8 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         const ticks=age/SERVER_TICK;
         b.x=b.ox+b.dx*ticks;
         b.y=b.oy+b.dy*ticks;
-        if(age>=BULLET_LIFETIME||b.x<-TILE_SIZE||b.x>(GRID_W+1)*TILE_SIZE||b.y<-TILE_SIZE||b.y>(GRID_H+1)*TILE_SIZE)delete s.bullets[id];
+        const _bLife=getStats(upgradesRef.current).bulletLifetime;
+        if(age>=_bLife||b.x<-TILE_SIZE||b.x>(GRID_W+1)*TILE_SIZE||b.y<-TILE_SIZE||b.y>(GRID_H+1)*TILE_SIZE)delete s.bullets[id];
       });
       if(rebuildFlag.current)buildTiles(tileLayer,s.tiles);
       renderPlayers(app,playerLayer,s.players,s.myId,now);
@@ -760,6 +899,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
             <div className="hud-level-row">
               <div className="hud-level">Lv.{level}</div>
               <div className="hud-xp-text" ref={xpTextRef}>0/100</div>
+              {(()=>{const pts=calcStatPoints(level)-Object.values(upgrades).reduce((a,b)=>a+b,0);return pts>0?<button className="hud-upgrade-btn" onClick={()=>setShowUpgradePanel(true)}>{pts}</button>:null;})()}
             </div>
             <div className="hud-xp-track">
               <div className="hud-xp-fill" ref={xpFillRef} style={{width:'0%',background:TEAM_CSS[playerTeam]}}/>
@@ -871,6 +1011,20 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       </div>
 
       {showSettings&&<SettingsModal lang={lang} onSave={l=>{setLang(l);setShowSettings(false);}} onClose={()=>setShowSettings(false)}/>}
+      {showUpgradePanel&&<UpgradePanel
+        lang={lang} level={level} upgrades={upgrades}
+        onUpgrade={id=>{
+          setUpgrades(prev=>{
+            const next={...prev,[id]:(prev[id]||0)+1};
+            upgradesRef.current=next;
+            // 포인트 다 썼으면 패널 닫기
+            const pts=calcStatPoints(level)-Object.values(next).reduce((a,b)=>a+b,0);
+            if(pts<=0) setShowUpgradePanel(false);
+            return next;
+          });
+        }}
+        onClose={()=>setShowUpgradePanel(false)}
+      />}
     </div>
   );
 }
