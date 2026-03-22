@@ -190,8 +190,8 @@ const MOVE_SPEED    = 3;
 const BULLET_SPEED  = 12;
 const BULLET_RADIUS = 7;
 const PLAYER_RADIUS = 14;
-const SHOOT_COOLDOWN    = 1000;
-const BULLET_LIFETIME   = 1000;
+const SHOOT_COOLDOWN    = 380;  // 클라이언트 최대 업그레이드(firerate Lv5 = 400ms)보다 살짝 낮게
+const BULLET_LIFETIME   = 2000;  // range Lv5 최대치(1000*2.0=2000ms) — 클라가 업그레이드에 따라 일찍 제거
 const TICK_RATE         = 1000 / 30;
 const INVINCIBLE_MS     = 5000;  // 리스폰 후 무적 시간
 const TILE_LOSS_RATIO   = 0.15;  // 사망 시 타일 손실 비율
@@ -206,7 +206,7 @@ const ROUND_BREAK_MS     = 15 * 1000;       // 라운드 사이 대기 15초
 const MAX_CONNS_PER_IP   = 3;     // IP당 최대 동시 접속
 const JOIN_TIMEOUT_MS    = 8000;  // 접속 후 join 없으면 kick
 const MOVE_RATE_LIMIT    = 120;   // 초당 최대 move (60fps * 2배 여유)
-const SHOOT_RATE_LIMIT   = 2;     // 초당 최대 shoot (쿨다운 1초이므로 여유 1개)
+const SHOOT_RATE_LIMIT   = 4;     // 초당 최대 shoot — 클라이언트 firerate 업그레이드 최대 속도(400ms) 고려
 const CHAT_RATE_LIMIT    = 2;     // 초당 최대 채팅
 // paint_tile은 서버 move 핸들러에서 직접 처리 — 별도 rate limit 불필요
 const PING_RATE_LIMIT    = 1;     // 초당 최대 ping_c
@@ -899,9 +899,13 @@ io.on('connection', (socket) => {
     const len = Math.hypot(payload.dx, payload.dy);
     if (len === 0) return;
 
+    // speedMult: 클라이언트 bulletSpeed 업그레이드 배율 (1.0 ~ 1.75, 검증 후 반영)
+    const rawMult = typeof payload.speedMult === 'number' ? payload.speedMult : 1;
+    const speedMult = Math.max(1.0, Math.min(1.76, rawMult)); // Lv5 최대 1+5*0.15=1.75
+
     p.lastShot = now;
-    const ndx = (payload.dx / len) * BULLET_SPEED;
-    const ndy = (payload.dy / len) * BULLET_SPEED;
+    const ndx = (payload.dx / len) * BULLET_SPEED * speedMult;
+    const ndy = (payload.dy / len) * BULLET_SPEED * speedMult;
 
     const id = `b_${bulletIdCounter++}`;
     bullets[id] = {
