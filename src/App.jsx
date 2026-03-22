@@ -191,56 +191,42 @@ function ChatBox({lang,msgs,input,setInput,onSend}){
 
 /* ══════════════ UPGRADE PANEL ══════════════ */
 function UpgradePanel({lang,level,upgrades,onUpgrade,onClose}){
-  const t=LANGS[lang];
   const totalPoints=calcStatPoints(level);
   const spent=Object.values(upgrades).reduce((a,b)=>a+b,0);
   const available=totalPoints-spent;
-  const teamColor='#5C9EFF';
   return(
-    <div className="upgrade-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="upgrade-panel">
-        <div className="upgrade-header">
-          <div className="upgrade-title">
-            <span className="upgrade-title-icon">⬆️</span>
-            {lang==='ko'?'능력치 강화':lang==='ja'?'スキルアップ':lang==='zh'?'能力升级':'Upgrade Skills'}
-          </div>
-          <div className="upgrade-points-badge">
-            {available > 0
-              ? <><span className="upgrade-pts-num">{available}</span>{lang==='ko'?' 포인트 남음':lang==='ja'?' pt残り':lang==='zh'?' 点可用':' pts left'}</>
-              : <span style={{color:'#BBB'}}>{lang==='ko'?'포인트 없음':lang==='ja'?'ポイントなし':lang==='zh'?'无可用点数':'No points'}</span>
-            }
-          </div>
-          <button className="upgrade-close" onClick={onClose}>✕</button>
+    <div className="upgrade-panel">
+      <div className="upgrade-header">
+        <div className="upgrade-title">
+          ⬆️ {lang==='ko'?'강화':lang==='ja'?'強化':lang==='zh'?'升级':'Skills'}
         </div>
-        <div className="upgrade-list">
-          {UPGRADES.map(up=>{
-            const curLv=upgrades[up.id]||0;
-            const maxed=curLv>=up.maxLv;
-            const canUp=available>0&&!maxed;
-            return(
-              <div key={up.id} className={`upgrade-row${maxed?' maxed':''}`}>
-                <div className="upgrade-icon">{up.icon}</div>
-                <div className="upgrade-info">
-                  <div className="upgrade-name">{up.label[lang]||up.label.en}</div>
-                  <div className="upgrade-desc">{up.desc[lang]||up.desc.en}</div>
-                  <div className="upgrade-stars">
-                    {Array.from({length:up.maxLv}).map((_,i)=>(
-                      <div key={i} className={`upgrade-star${i<curLv?' filled':''}`}/>
-                    ))}
-                  </div>
+        {available>0&&<div className="upgrade-points-badge">{available}</div>}
+        <button className="upgrade-close" onClick={onClose}>✕</button>
+      </div>
+      <div className="upgrade-list">
+        {UPGRADES.map(up=>{
+          const curLv=upgrades[up.id]||0;
+          const maxed=curLv>=up.maxLv;
+          const canUp=available>0&&!maxed;
+          return(
+            <div key={up.id} className={`upgrade-row${maxed?' maxed':''}`}>
+              <div className="upgrade-icon">{up.icon}</div>
+              <div className="upgrade-info">
+                <div className="upgrade-name">{up.label[lang]||up.label.en}</div>
+                <div className="upgrade-stars">
+                  {Array.from({length:up.maxLv}).map((_,i)=>(
+                    <div key={i} className={`upgrade-star${i<curLv?' filled':''}`}/>
+                  ))}
                 </div>
-                <button
-                  className={`upgrade-btn${canUp?' active':''}`}
-                  onClick={()=>canUp&&onUpgrade(up.id)}
-                  disabled={!canUp}
-                >
-                  {maxed?'MAX':'＋'}
-                </button>
               </div>
-            );
-          })}
-        </div>
-        {available===0&&<div className="upgrade-footer">{lang==='ko'?'레벨업 시 포인트를 얻습니다':lang==='ja'?'レベルアップでポイントを獲得':lang==='zh'?'升级获得点数':'Earn points by leveling up'}</div>}
+              <button
+                className={`upgrade-btn${canUp?' active':''}`}
+                onClick={()=>canUp&&onUpgrade(up.id)}
+                disabled={!canUp}
+              >{maxed?'MAX':'＋'}</button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -506,14 +492,18 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
         const sp=new PIXI.Sprite(getPlayerTex(app,color,isMe)); sp.anchor.set(0.5);
         const txt=new PIXI.Text(p.name,{fontFamily:'Nunito',fontSize:11,fontWeight:'800',fill:0xFFFFFF,stroke:0x000000,strokeThickness:2,align:'center'});
         txt.anchor.set(0.5,1); txt.y=-(PLAYER_RADIUS+4);
+        const lvTxt=new PIXI.Text('Lv.1',{fontFamily:'Nunito',fontSize:9,fontWeight:'700',fill:0xFFFFFF,stroke:0x000000,strokeThickness:1.5,align:'center'});
+        lvTxt.anchor.set(0.5,0); lvTxt.y=PLAYER_RADIUS+3;
         const crown=new PIXI.Sprite(getCrownTex(app)); crown.anchor.set(0.5,1);
         crown.y=-(PLAYER_RADIUS+18); crown.visible=false;
-        const c=new PIXI.Container(); c.addChild(sp,txt,crown); layer.addChild(c);
-        playerGfxMap.current[id]={c,sprite:sp,txt,crown,color,isMe};
+        const c=new PIXI.Container(); c.addChild(sp,txt,lvTxt,crown); layer.addChild(c);
+        playerGfxMap.current[id]={c,sprite:sp,txt,lvTxt,crown,color,isMe};
       }
       const e=playerGfxMap.current[id];
       if(e.color!==color||e.isMe!==isMe){e.sprite.texture=getPlayerTex(app,color,isMe);e.color=color;e.isMe=isMe;}
-      e.txt.text=p.name; e.c.x=p.x; e.c.y=p.y;
+      e.txt.text=p.name;
+      if(e.lvTxt) e.lvTxt.text=`Lv.${p.level||1}`;
+      e.c.x=p.x; e.c.y=p.y;
       e.crown.visible = false;
       // 무적 깜빡임
       const invLeft=p.invincibleUntil?p.invincibleUntil-now:0;
@@ -637,6 +627,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     socket.on('leaderboard',({leaderboard,teamTiles,round:rd})=>{
       setLeaderboard(leaderboard);
       topPlayerIdRef.current = leaderboard[0]?.id ?? null;
+      // 플레이어 레벨 동기화 (PIXI 레벨 표시용)
+      leaderboard.forEach(p=>{ if(state.current.players[p.id]) state.current.players[p.id].level=p.level; });
       if(teamTiles) setScores({red:teamTiles.red??0,blue:teamTiles.blue??0,green:teamTiles.green??0});
       if(rd){
         if(rd.timeLeft!=null) roundEndsAtRef.current = Date.now() + rd.timeLeft;
@@ -737,6 +729,10 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       s.keys[e.code]=false;
     };
     window.addEventListener('keydown',onKD); window.addEventListener('keyup',onKU);
+
+    // Ctrl+휠 확대/축소 방지
+    const onWheel=e=>{if(e.ctrlKey){e.preventDefault();}};
+    window.addEventListener('wheel',onWheel,{passive:false});
 
     const cv=app.view;
     // [FIX] mousePos를 논리픽셀(CSS픽셀) 기준으로 저장
@@ -864,7 +860,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       // 말풍선 전부 정리
       Object.keys(chatBubbles.current).forEach(id=>removeChatBubble(id));
       socket.disconnect(); socketRef.current=null;
-      window.removeEventListener('keydown',onKD); window.removeEventListener('keyup',onKU); window.removeEventListener('mouseup',onMU);
+      window.removeEventListener('keydown',onKD); window.removeEventListener('keyup',onKU); window.removeEventListener('mouseup',onMU); window.removeEventListener('wheel',onWheel);
       cv.removeEventListener('mousemove',onMM); cv.removeEventListener('mousedown',onMD);
       Object.values(texCache.current).forEach(t=>{try{t.destroy(true);}catch(_){}});
       texCache.current={};
@@ -923,6 +919,19 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
           expanded={minimapExpanded}
           onToggle={()=>setMinimapExpanded(v=>!v)}
         />
+
+        {/* 업그레이드 패널 — 미니맵 아래 고정 */}
+        {!minimapExpanded&&<UpgradePanel
+          lang={lang} level={level} upgrades={upgrades}
+          onUpgrade={id=>{
+            setUpgrades(prev=>{
+              const next={...prev,[id]:(prev[id]||0)+1};
+              upgradesRef.current=next;
+              return next;
+            });
+          }}
+          onClose={()=>{}}
+        />}
 
         {/* 개인 순위표 */}
         {leaderboard.length>0&&(
@@ -1011,20 +1020,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       </div>
 
       {showSettings&&<SettingsModal lang={lang} onSave={l=>{setLang(l);setShowSettings(false);}} onClose={()=>setShowSettings(false)}/>}
-      {showUpgradePanel&&<UpgradePanel
-        lang={lang} level={level} upgrades={upgrades}
-        onUpgrade={id=>{
-          setUpgrades(prev=>{
-            const next={...prev,[id]:(prev[id]||0)+1};
-            upgradesRef.current=next;
-            // 포인트 다 썼으면 패널 닫기
-            const pts=calcStatPoints(level)-Object.values(next).reduce((a,b)=>a+b,0);
-            if(pts<=0) setShowUpgradePanel(false);
-            return next;
-          });
-        }}
-        onClose={()=>setShowUpgradePanel(false)}
-      />}
     </div>
   );
 }
