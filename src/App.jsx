@@ -155,7 +155,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[roundNumber,setRoundNumber]=useState(1);
   const[roundResult,setRoundResult]=useState(null);
   const[resultCountdown,setResultCountdown]=useState(8);
-  const[leaderboard,setLeaderboard]=useState([]); // [{id,name,team,gained}]
+  const[leaderboard,setLeaderboard]=useState([]);
+  const[roundTimeLeft,setRoundTimeLeft]=useState(ROUND_MS);
   const roundStartRef=useRef(Date.now());
   const ROUND_MS=3*60*1000;
 
@@ -342,7 +343,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     });
 
     // init — 고스트 방지: GFX 전체 교체
-    socket.on('init',({id,tiles,players,invincibleMs,round})=>{
+    socket.on('init',({id,tiles,players,invincibleMs,round,roundTimeLeft})=>{
       s.myId=id;
       if(tiles)s.tiles=tiles;
       // 기존 GFX 전부 제거
@@ -359,6 +360,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       buildTiles(tileLayer,s.tiles); calcScores(s.tiles);
       setPlayerCount(Object.keys(s.players).length);
       if(round)setRoundNumber(round);
+      if(roundTimeLeft!=null)setRoundTimeLeft(roundTimeLeft);
     });
 
     // player_join — 고스트 방지: 중복 GFX 제거 후 재등록
@@ -412,6 +414,18 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     let pingT=0;
     const pingIv=setInterval(()=>{pingT=Date.now();socket.emit('ping_c');},2000);
     socket.on('pong_c',()=>setPing(Date.now()-pingT));
+
+    // 라운드 타이머 동기화
+    socket.on('round_tick',({timeLeft})=>setRoundTimeLeft(timeLeft));
+
+    // 맵 초기화
+    socket.on('map_reset',({tiles:newTiles})=>{
+      if(newTiles){
+        s.tiles=newTiles;
+        buildTiles(tileLayer,s.tiles);
+        calcScores(s.tiles);
+      }
+    });
 
     // 라운드 결과 수신
     socket.on('round_result',(result)=>{
@@ -560,6 +574,13 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const gp=(scores.green/total*100).toFixed(1);
   const tc=tcRef.current;
 
+  // 라운드 타이머 포맷 (mm:ss)
+  const timerSec = Math.ceil(roundTimeLeft / 1000);
+  const timerMin = Math.floor(timerSec / 60);
+  const timerS   = timerSec % 60;
+  const timerStr = `${timerMin}:${String(timerS).padStart(2,'0')}`;
+  const timerUrgent = timerSec <= 30; // 30초 이하면 빨간색
+
   // 팀 메달
   const MEDAL=['🥇','🥈','🥉'];
 
@@ -569,6 +590,9 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         <div className="hud-logo"><div className="hud-logo-circle"/><span style={{color:'#555',fontWeight:900}}>colorize</span><span style={{color:'#999',fontSize:'0.8em'}}>.io</span></div>
         <div className="score-bar"><div className="score-seg" style={{width:`${rp}%`,background:TEAM_CSS.red}}/><div className="score-seg" style={{width:`${bp}%`,background:TEAM_CSS.blue}}/><div className="score-seg" style={{width:`${gp}%`,background:TEAM_CSS.green}}/></div>
         <div className="hud-scores">{['red','blue','green'].map(tm=><div className="hud-score" key={tm}><div className="hud-dot" style={{background:TEAM_CSS[tm]}}/>{scores[tm]}</div>)}</div>
+        <div className="hud-timer" style={{color: timerUrgent ? '#E24B4A' : 'inherit', fontWeight: timerUrgent ? 700 : 500}}>
+          ⏱ {timerStr}
+        </div>
         <div className="hud-right">
           <div className="hud-player"><span>{playerName}</span> · {t.team_names[playerTeam]}</div>
           <div className="player-count">👥 {playerCount}</div>
@@ -626,12 +650,12 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       {roundResult&&(
         <div className="round-overlay">
           <div className="round-card">
-            <div className="round-card-title">Round {roundResult.round} 결과</div>
+            <div className="round-card-title">Round {roundResult.round}</div>
             <div className="round-card-round">🏁</div>
 
             {/* 팀 순위 */}
             <div>
-              <div className="round-section-label">팀 순위 (누적 타일)</div>
+              <div className="round-section-label">{{'en':'Team Rankings','ko':'팀 순위','ja':'チーム順位','zh':'队伍排名'}[lang]??'Team Rankings'}</div>
               <div className="round-team-ranks">
                 {roundResult.teamRanks.map((tr,i)=>(
                   <div key={tr.team} className="round-team-item" style={{background:TEAM_CSS[tr.team]+'22',outline:`2px solid ${TEAM_CSS[tr.team]}44`}}>
@@ -645,17 +669,20 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
 
             {/* 개인 순위 */}
             <div>
-              <div className="round-section-label">이번 라운드 개인 획득 타일</div>
+              <div className="round-section-label">{{'en':'Individual Tiles','ko':'개인 획득 타일','ja':'個人獲得タイル','zh':'个人获得格子'}[lang]??'Individual Tiles'}</div>
               <div className="round-player-ranks">
                 {roundResult.playerRanks.length===0
-                  ?<div style={{textAlign:'center',color:'var(--muted)',fontSize:'0.8rem',padding:'8px'}}>플레이어 없음</div>
+                  ?<div style={{textAlign:'center',color:'var(--muted)',fontSize:'0.8rem',padding:'8px'}}>{{'en':'No players','ko':'플레이어 없음','ja':'プレイヤーなし','zh':'没有玩家'}[lang]}</div>
                   :roundResult.playerRanks.map((pr,i)=>{
                     const isMe=socketRef.current&&pr.id===socketRef.current.id;
                     return(
                       <div key={pr.id} className={`round-player-item${isMe?' is-me':''}`}>
                         <div className="round-player-rank-num">{i+1}</div>
                         <div className="round-player-dot" style={{background:TEAM_CSS[pr.team]??'#999'}}/>
-                        <div className="round-player-name">{pr.name}{isMe?' (나)':''}</div>
+                        <div className="round-player-name">
+                          {pr.name}{isMe?' (나)':''}
+                          {pr.lateJoin&&<span style={{fontSize:'0.7em',opacity:0.6,marginLeft:4}}>{{'en':'late','ko':'후반','ja':'途中','zh':'中途'}[lang]}</span>}
+                        </div>
                         <div className="round-player-gained">+{pr.gained} tiles</div>
                       </div>
                     );
@@ -664,7 +691,9 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
               </div>
             </div>
 
-            <div className="round-countdown">{resultCountdown}초 후 자동으로 닫힘</div>
+            <div className="round-countdown">
+              {{'en':'Map resets in','ko':'맵이','ja':'マップが','zh':'地图将在'}[lang]} {resultCountdown}{{'en':'s','ko':'초 후 초기화','ja':'秒後にリセット','zh':'秒后重置'}[lang]}
+            </div>
           </div>
         </div>
       )}
