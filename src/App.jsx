@@ -387,8 +387,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
 
     const app=new PIXI.Application({resizeTo:containerRef.current,backgroundColor:0xF7F5F0,antialias:true,autoDensity:true});
     containerRef.current.appendChild(app.view);
-    const tileLayer=new PIXI.Container(), shLayer=new PIXI.Container(), playerLayer=new PIXI.Container(), bulletLayer=new PIXI.Container();
-    app.stage.addChild(tileLayer,shLayer,playerLayer,bulletLayer);
+    const tileLayer=new PIXI.Container(), playerLayer=new PIXI.Container(), shLayer=new PIXI.Container(), bulletLayer=new PIXI.Container();
+    app.stage.addChild(tileLayer,playerLayer,shLayer,bulletLayer);
     buildTiles(tileLayer,s.tiles);
 
     // ── 거점 렌더 ──
