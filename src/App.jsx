@@ -540,9 +540,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const gp=(scores.green/total*100).toFixed(1);
   const tc=tcRef.current;
 
-  // 팀 메달
-  const MEDAL=['🥇','🥈','🥉'];
-
   return(
     <div className="game-wrapper">
       <div className="hud">
@@ -567,10 +564,10 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
               const isMe=socketRef.current&&p.id===socketRef.current.id;
               return(
                 <div key={p.id} className="leaderboard-row">
-                  <div className="leaderboard-rank">{MEDAL[i]??i+1}</div>
+                  <div className="leaderboard-rank">{['🥇','🥈','🥉'][i]??i+1}</div>
                   <div className="leaderboard-dot" style={{background:TEAM_CSS[p.team]??'#999'}}/>
                   <div className={`leaderboard-name${isMe?' is-me':''}`}>{p.name}</div>
-                  <div className="leaderboard-score">{p.tiles}</div>
+                  <div className="leaderboard-score">{p.tiles}칸</div>
                 </div>
               );
             })}
