@@ -190,6 +190,10 @@ const TILE_LOSS_RATIO   = 0.15;  // 사망 시 타일 손실 비율
 const TILE_LOSS_MIN     = 3;     // 최소 손실 타일 수
 const TILE_LOSS_MAX     = 50;    // 최대 손실 타일 수
 
+// ── 라운드 상수 ──────────────────────────────────────
+const ROUND_DURATION_MS  = 10 * 60 * 1000; // 10분
+const ROUND_BREAK_MS     = 15 * 1000;       // 라운드 사이 대기 15초
+
 // ── 보안 상수 ────────────────────────────────────────
 const MAX_CONNS_PER_IP   = 3;     // IP당 최대 동시 접속
 const JOIN_TIMEOUT_MS    = 8000;  // 접속 후 join 없으면 kick
@@ -319,6 +323,84 @@ let players = {};
 let bullets = {};
 let bulletIdCounter = 0;
 
+// ── 라운드 상태 ──────────────────────────────────────
+const round = {
+  num:       1,                        // 현재 라운드 번호
+  phase:     'playing',                // 'playing' | 'break'
+  endsAt:    Date.now() + ROUND_DURATION_MS,  // 라운드 종료 시각
+};
+
+function roundTimeLeft() {
+  return Math.max(0, round.endsAt - Date.now());
+}
+
+// 레벨 계산 (xp 기반): lv = floor(sqrt(xp / 10))
+function calcLevel(xp) {
+  return Math.floor(Math.sqrt((xp ?? 0) / 10));
+}
+
+// XP → 다음 레벨까지 필요 XP
+function xpForLevel(lv) {
+  return lv * lv * 10;
+}
+
+// 맵 초기화
+function resetMap() {
+  tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
+  // 개인 타일 Set 초기화 (XP·레벨은 유지)
+  personalTileSets.forEach((set, sid) => {
+    set.clear();
+    if (players[sid]) {
+      players[sid].personalTiles = 0;
+    }
+  });
+  bullets = {};
+  io.emit('round_reset', { tiles });
+}
+
+// 라운드 종료 처리
+function endRound() {
+  round.phase = 'break';
+
+  // 팀별 타일 집계
+  const teamTiles = { red: 0, blue: 0, green: 0 };
+  tiles.forEach(row => row.forEach(t => { if (t) teamTiles[t]++; }));
+
+  // 승자 결정
+  const winner = Object.entries(teamTiles).sort((a, b) => b[1] - a[1])[0][0];
+
+  // 플레이어별 라운드 결과 (순위, 기여 타일)
+  const results = Object.values(players)
+    .map(p => ({ id: p.id, name: p.name, team: p.team, tiles: p.personalTiles ?? 0, level: calcLevel(p.xp), xp: p.xp ?? 0 }))
+    .sort((a, b) => b.tiles - a.tiles);
+
+  io.emit('round_end', { winner, teamTiles, results, breakMs: ROUND_BREAK_MS, roundNum: round.num });
+  console.log(`🏁 라운드 ${round.num} 종료 — 승자: ${winner} (${teamTiles[winner]}칸)`);
+
+  // 대기 후 새 라운드 시작
+  setTimeout(() => {
+    round.num++;
+    round.phase = 'playing';
+    round.endsAt = Date.now() + ROUND_DURATION_MS;
+    resetMap();
+    // 모든 플레이어 리스폰
+    Object.entries(players).forEach(([sid, p]) => {
+      const sp = spawnPosition();
+      p.x = sp.x; p.y = sp.y;
+      p.invincibleUntil = Date.now() + INVINCIBLE_MS;
+      io.to(sid).emit('respawn', { x: p.x, y: p.y, invincibleMs: INVINCIBLE_MS });
+    });
+    io.emit('round_start', { roundNum: round.num, endsAt: round.endsAt });
+    console.log(`▶️  라운드 ${round.num} 시작`);
+  }, ROUND_BREAK_MS);
+}
+
+// 라운드 타이머 틱 (1초마다)
+setInterval(() => {
+  if (round.phase !== 'playing') return;
+  if (Date.now() >= round.endsAt) endRound();
+}, 1000);
+
 // 30초마다 자동 저장
 setInterval(saveTiles, SAVE_INTERVAL);
 
@@ -389,6 +471,17 @@ function paintTile(tx, ty, team, ownerId) {
     if (!personalTileSets.has(ownerId)) personalTileSets.set(ownerId, new Set());
     personalTileSets.get(ownerId).add(key);
     players[ownerId].personalTiles = (players[ownerId].personalTiles ?? 0) + 1;
+
+    // XP 지급 (새 타일을 칠 때만 +1)
+    const prevXp  = players[ownerId].xp ?? 0;
+    const prevLv  = calcLevel(prevXp);
+    players[ownerId].xp = prevXp + 1;
+    const newLv   = calcLevel(players[ownerId].xp);
+
+    // 레벨업 발생 시 해당 클라이언트에게만 알림
+    if (newLv > prevLv) {
+      io.to(ownerId).emit('level_up', { level: newLv, xp: players[ownerId].xp });
+    }
   }
 
   io.emit('tile_paint', { x: tx, y: ty, team });
@@ -541,20 +634,24 @@ setInterval(() => {
   const teamTiles = { red: 0, blue: 0, green: 0 };
   tiles.forEach(row => row.forEach(t => { if (t) teamTiles[t]++; }));
 
-  // 팀별 인원수
   const teamCounts = { red: 0, blue: 0, green: 0 };
   Object.values(players).forEach(p => { if (teamCounts[p.team] !== undefined) teamCounts[p.team]++; });
 
   const leaderboard = Object.values(players)
     .map(p => ({
-      id:           p.id,
-      name:         p.name,
-      team:         p.team,
-      tiles:        p.personalTiles ?? 0,
+      id:    p.id,
+      name:  p.name,
+      team:  p.team,
+      tiles: p.personalTiles ?? 0,
+      level: calcLevel(p.xp),
+      xp:    p.xp ?? 0,
     }))
     .sort((a, b) => b.tiles - a.tiles);
 
-  io.emit('leaderboard', { leaderboard, teamTiles, teamCounts });
+  io.emit('leaderboard', {
+    leaderboard, teamTiles, teamCounts,
+    round: { num: round.num, phase: round.phase, timeLeft: roundTimeLeft() },
+  });
 }, 2000);
 
 // ── Socket.io 이벤트 ──────────────────────────────────
@@ -614,6 +711,7 @@ io.on('connection', (socket) => {
     const assignedTeam = TEAMS.includes(team) ? team : 'blue';
     const isReconnect  = !!players[socket.id];
     const prevPersonalTiles = isReconnect ? (players[socket.id].personalTiles ?? 0) : 0;
+    const prevXp            = isReconnect ? (players[socket.id].xp ?? 0) : 0;
 
     // 재연결 시 위치 유지, 신규 접속만 스폰 위치 지정
     let spawnX, spawnY;
@@ -634,12 +732,16 @@ io.on('connection', (socket) => {
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
       personalTiles:   prevPersonalTiles,
+      xp:              prevXp,
     };
 
     socket.emit('init', {
       id:            socket.id,
       tiles,
       invincibleMs:  INVINCIBLE_MS,
+      round: { num: round.num, phase: round.phase, endsAt: round.endsAt },
+      xp:            prevXp,
+      level:         calcLevel(prevXp),
       players: Object.fromEntries(
         Object.entries(players).map(([id, p]) => [id, sanitizePlayer(p)])
       ),
