@@ -185,7 +185,6 @@ const JOIN_TIMEOUT_MS    = 8000;  // 접속 후 join 없으면 kick
 const MOVE_RATE_LIMIT    = 120;   // 초당 최대 move (60fps * 2배 여유)
 const SHOOT_RATE_LIMIT   = 2;     // 초당 최대 shoot (쿨다운 1초이므로 여유 1개)
 const CHAT_RATE_LIMIT    = 2;     // 초당 최대 채팅
-const PAINT_RATE_LIMIT   = 30;    // 초당 최대 paint_tile
 const PING_RATE_LIMIT    = 1;     // 초당 최대 ping_c
 const RATE_WINDOW_MS     = 1000;  // rate limit 집계 윈도우
 const MAX_VIOLATIONS     = 50;    // 위반 누적 시 kick (화이트해커 권고값)
@@ -783,39 +782,6 @@ io.on('connection', (socket) => {
     paintTile(tx, ty, p.team, socket.id);
 
     socket.broadcast.emit('player_move', { id: socket.id, x: p.x, y: p.y, invincibleUntil: p.invincibleUntil ?? 0 });
-  });
-
-  // ── paint_tile ──
-  socket.on('paint_tile', (payload) => {
-    const p = players[socket.id];
-    if (!p) return;
-
-    if (!checkRate(socket.id, 'paint', PAINT_RATE_LIMIT)) {
-      addViolation(socket, 'paint_tile: rate limit');
-      return;
-    }
-
-    if (!payload || !isFiniteNum(payload.x) || !isFiniteNum(payload.y)) {
-      addViolation(socket, 'paint_tile: invalid payload');
-      return;
-    }
-
-    const tx = Math.floor(payload.x);
-    const ty = Math.floor(payload.y);
-    if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) {
-      addViolation(socket, 'paint_tile: out of bounds');
-      return;
-    }
-
-    // 원격 타일 페인팅 방지: 플레이어 현재 위치 기준 인접 1칸만 허용
-    const ptx = Math.floor(p.x / TILE_SIZE);
-    const pty = Math.floor(p.y / TILE_SIZE);
-    if (Math.abs(tx - ptx) > 1 || Math.abs(ty - pty) > 1) {
-      addViolation(socket, `paint_tile: remote paint (${tx},${ty}) player@(${ptx},${pty})`);
-      return;
-    }
-
-    paintTile(tx, ty, p.team, socket.id);
   });
 
   // ── shoot ──
