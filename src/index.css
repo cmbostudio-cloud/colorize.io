@@ -14,8 +14,8 @@ html, body, #root {
 .lobby { display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:var(--bg); position:relative; overflow:hidden; }
 .lobby-inner { display:flex; flex-direction:column; align-items:center; width:100%; max-width:420px; gap:16px; }
 .lobby-logo { font-size:clamp(2rem,8vw,3.4rem); font-weight:900; letter-spacing:-1px; display:flex; align-items:center; gap:8px; }
-.logo-circle { width:clamp(36px,9vw,56px); height:clamp(36px,9vw,56px); border-radius:50%; background:var(--blue); flex-shrink:0; box-shadow:0 4px 16px rgba(92,158,255,0.35); position:relative; overflow:hidden; }
-.logo-circle::after { content:''; position:absolute; top:15%; left:18%; width:32%; height:32%; border-radius:50%; background:rgba(255,255,255,0.5); }
+.logo-circle { width:clamp(36px,9vw,56px); height:clamp(36px,9vw,56px); border-radius:50%; background:var(--blue); flex-shrink:0; position:relative; overflow:hidden; }
+.logo-circle::after { content:''; position:absolute; top:18%; left:20%; width:28%; height:28%; border-radius:50%; background:rgba(255,255,255,0.65); }
 .logo-text { display:flex; align-items:center; gap:2px; }
 .lobby-card { background:var(--card); border-radius:24px; padding:clamp(22px,4vh,36px) clamp(20px,5vw,40px); box-shadow:var(--shadow); width:100%; max-width:380px; display:flex; flex-direction:column; gap:clamp(12px,2vh,16px); }
 .lobby-label { font-size:clamp(0.7rem,2vw,0.8rem); font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
@@ -79,7 +79,7 @@ html, body, #root {
 .hud { display:flex; align-items:center; justify-content:space-between; padding:clamp(5px,1.5vw,8px) clamp(8px,2vw,14px); background:var(--card); box-shadow:0 2px 12px rgba(0,0,0,0.06); z-index:10; flex-shrink:0; gap:8px; }
 .hud-logo { font-size:clamp(0.8rem,2.2vw,1.05rem); font-weight:900; letter-spacing:-0.5px; flex-shrink:0; display:flex; align-items:center; gap:5px; }
 .hud-logo-circle { width:clamp(18px,3vw,26px); height:clamp(18px,3vw,26px); border-radius:50%; background:var(--blue); flex-shrink:0; position:relative; overflow:hidden; }
-.hud-logo-circle::after { content:''; position:absolute; top:15%; left:18%; width:30%; height:30%; border-radius:50%; background:rgba(255,255,255,0.5); }
+.hud-logo-circle::after { content:''; position:absolute; top:18%; left:20%; width:28%; height:28%; border-radius:50%; background:rgba(255,255,255,0.65); }
 .score-bar { flex:1; display:flex; height:clamp(8px,1.5vw,11px); border-radius:8px; overflow:hidden; margin:0 8px; background:#EFEFEF; min-width:50px; }
 .score-seg { height:100%; transition:width 0.4s ease; }
 .hud-scores { display:flex; gap:clamp(6px,1.5vw,9px); flex-shrink:0; }
