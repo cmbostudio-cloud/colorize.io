@@ -359,15 +359,26 @@ function roundTimeLeft() {
   return Math.max(0, round.endsAt - Date.now());
 }
 
-// 레벨 계산 (xp 기반): lv = max(1, floor(sqrt(xp / 10)))
-function calcLevel(xp) {
-  return Math.max(1, Math.floor(Math.sqrt((xp ?? 0) / 10)));
+// 레벨 계산: 1.1배 스케일 누적합 기반
+// xpForLevel(lv) = floor(100 * 1.1^(lv-1))
+function xpForLevel(lv) {
+  return Math.floor(100 * Math.pow(1.1, lv - 1));
+}
+function calcLevel(totalXp) {
+  let lv = 1;
+  let accumulated = 0;
+  while (true) {
+    const needed = xpForLevel(lv);
+    if (accumulated + needed > (totalXp ?? 0)) break;
+    accumulated += needed;
+    lv++;
+    if (lv > 9999) break;
+  }
+  return lv;
 }
 
-// XP → 다음 레벨까지 필요 XP
-function xpForLevel(lv) {
-  return lv * lv * 10;
-}
+// 틱당 플레이어별 XP 델타 누적 (배치 flush용)
+const pendingXpDeltas = new Map(); // socketId → delta
 
 // 맵 초기화
 function resetMap() {
@@ -507,14 +518,9 @@ function paintTile(tx, ty, team, ownerId) {
     tileOwners.set(key, ownerId);
     players[ownerId].personalTiles = (players[ownerId].personalTiles ?? 0) + 1;
 
-    // XP 지급
-    const prevXp = players[ownerId].xp ?? 0;
-    const prevLv = calcLevel(prevXp);
-    players[ownerId].xp = prevXp + 1;
-    const newLv  = calcLevel(players[ownerId].xp);
-    if (newLv > prevLv) {
-      io.to(ownerId).emit('level_up', { level: newLv, xp: players[ownerId].xp });
-    }
+    // XP 지급 — 개별 emit 없이 델타 누적 (배치 flush에서 전송)
+    players[ownerId].xp = (players[ownerId].xp ?? 0) + 1;
+    pendingXpDeltas.set(ownerId, (pendingXpDeltas.get(ownerId) ?? 0) + 1);
   }
 
   // 즉시 emit 대신 배치 큐에 추가 (같은 타일은 마지막 값으로 덮어씀)
@@ -646,6 +652,20 @@ setInterval(() => {
     } else {
       io.emit('tiles_batch', batch);
     }
+  }
+
+  // XP 델타 flush — 플레이어별로 개별 emit (레벨업 감지 포함)
+  if (pendingXpDeltas.size > 0) {
+    pendingXpDeltas.forEach((delta, sid) => {
+      const p = players[sid];
+      if (!p) return;
+      const newXp  = p.xp ?? 0;
+      const newLv  = calcLevel(newXp);
+      const prevLv = calcLevel(newXp - delta); // 이번 틱 이전 레벨
+      const leveled = newLv > prevLv;
+      io.to(sid).emit('xp_update', { xp: newXp, level: newLv, leveled });
+    });
+    pendingXpDeltas.clear();
   }
 
   if (Object.keys(bullets).length === 0) return;
