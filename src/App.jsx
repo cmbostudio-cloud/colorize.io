@@ -509,17 +509,24 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       setRoundEnd({winner,teamTiles,results,breakMs});
     });
 
-    // 새 라운드 시작
+    // 새 라운드 시작 — XP/레벨 초기화
     socket.on('round_start',({roundNum:rn,endsAt})=>{
       setRoundPhase('playing');
       setRoundNum(rn);
       setRoundEnd(null);
       roundEndsAtRef.current=endsAt;
+      setXp(0); setLevel(1);
     });
 
     // 맵 초기화 (라운드 리셋)
     socket.on('round_reset',({tiles:newTiles})=>{
-      if(newTiles){s.tiles=newTiles;minimapTilesRef.current=s.tiles;}
+      s.tiles=newTiles||Array.from({length:GRID_H},()=>Array(GRID_W).fill(null));
+      minimapTilesRef.current=s.tiles;
+      // 총알 GFX 전부 정리
+      Object.keys(bulletGfxMap.current).forEach(bid=>{
+        const sp=bulletGfxMap.current[bid];if(sp.parent)sp.parent.removeChild(sp);sp.destroy();delete bulletGfxMap.current[bid];
+      });
+      s.bullets={};
       buildTiles(tileLayer,s.tiles);
       calcScores(s.tiles);
     });
@@ -699,7 +706,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   return(
     <div className="game-wrapper">
       <div className="hud">
-        <div className="hud-logo"><div className="hud-logo-circle"/><span style={{color:'#555',fontWeight:900}}>colorize</span><span style={{color:'#999',fontSize:'0.8em'}}>.io</span></div>
+        <div className="hud-logo"><div className="hud-logo-circle"/><div className="logo-text" style={{fontSize:'clamp(0.75rem,2vw,1rem)'}}><Logo/></div><span style={{color:'#999',fontSize:'0.75em',fontWeight:700}}>.io</span></div>
         {/* 타이머 */}
         <div className="hud-timer-wrap">
           <div className="hud-round-num">R{roundNum}</div>
