@@ -22,8 +22,9 @@ html, body, #root {
 .lobby-input { width:100%; border:2px solid #ECECEC; border-radius:12px; padding:clamp(10px,2vh,12px) 16px; font-size:clamp(0.9rem,2.5vw,1rem); font-family:'Nunito',sans-serif; font-weight:700; color:var(--text); outline:none; transition:border 0.2s; background:#FAFAFA; }
 .lobby-input:focus { border-color:var(--blue); background:#fff; }
 .team-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
-.team-btn { border:2.5px solid transparent; border-radius:14px; padding:clamp(9px,2vh,12px) 6px; font-family:'Nunito',sans-serif; font-size:clamp(0.75rem,2.2vw,0.85rem); font-weight:800; cursor:pointer; transition:all 0.18s; display:flex; flex-direction:column; align-items:center; gap:5px; background:#F5F5F5; color:var(--muted); }
+.team-btn { border:2.5px solid transparent; border-radius:14px; padding:clamp(9px,2vh,12px) 6px; font-family:'Nunito',sans-serif; font-size:clamp(0.75rem,2.2vw,0.85rem); font-weight:800; cursor:pointer; transition:all 0.18s; display:flex; flex-direction:column; align-items:center; gap:3px; background:#F5F5F5; color:var(--muted); }
 .team-btn .team-dot { width:20px; height:20px; border-radius:50%; }
+.team-count { font-size:0.68rem; font-weight:700; opacity:0.75; }
 .team-btn.active-red   { border-color:var(--red);  background:#FFF0F0; color:var(--red); }
 .team-btn.active-blue  { border-color:var(--blue); background:#EFF5FF; color:var(--blue); }
 .team-btn.active-green { border-color:var(--green);background:#EDFFF5; color:var(--green); }
@@ -154,3 +155,9 @@ html, body, #root {
 .leaderboard-name.is-me { color:var(--blue); }
 .leaderboard-score { font-size:0.68rem; font-weight:900; color:var(--muted); flex-shrink:0; }
 @media (max-width:768px) and (pointer:coarse) { .leaderboard { display:none; } }
+
+/* ══ MINIMAP ══ */
+.minimap-wrap { position:absolute; top:10px; right:12px; border-radius:10px; overflow:hidden; cursor:pointer; box-shadow:0 2px 12px rgba(0,0,0,0.18); border:2px solid rgba(255,255,255,0.5); transition:all 0.2s; z-index:10; }
+.minimap-wrap.expanded { border-radius:14px; box-shadow:0 4px 24px rgba(0,0,0,0.28); }
+.minimap-canvas { display:block; }
+.minimap-icon { position:absolute; bottom:4px; right:5px; font-size:0.65rem; color:rgba(255,255,255,0.8); font-weight:900; line-height:1; pointer-events:none; text-shadow:0 1px 3px rgba(0,0,0,0.5); }
