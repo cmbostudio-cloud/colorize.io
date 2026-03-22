@@ -563,7 +563,15 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
             {leaderboard.slice(0,8).map((p,i)=>{
               const isMe=socketRef.current&&p.id===socketRef.current.id;
               return(
-                <div key={p.id} className="leaderboard-row">
+                <div key={p.id} className="leaderboard-row" style={{position:'relative'}}>
+                  {i===0&&(
+                    <svg className="leaderboard-crown" viewBox="0 0 24 14" xmlns="http://www.w3.org/2000/svg" style={{position:'absolute',top:'-13px',left:'50%',transform:'translateX(-50%)',width:'18px',height:'11px',filter:'drop-shadow(0 1px 2px rgba(0,0,0,0.18))'}}>
+                      <polygon points="2,13 6,4 12,9 18,4 22,13" fill="#FFD700" stroke="#FFA500" strokeWidth="1" strokeLinejoin="round"/>
+                      <circle cx="2"  cy="13" r="1.5" fill="#FFD700" stroke="#FFA500" strokeWidth="0.8"/>
+                      <circle cx="12" cy="8.5" r="1.5" fill="#FFD700" stroke="#FFA500" strokeWidth="0.8"/>
+                      <circle cx="22" cy="13" r="1.5" fill="#FFD700" stroke="#FFA500" strokeWidth="0.8"/>
+                    </svg>
+                  )}
                   <div className="leaderboard-rank">{['🥇','🥈','🥉'][i]??i+1}</div>
                   <div className="leaderboard-dot" style={{background:TEAM_CSS[p.team]??'#999'}}/>
                   <div className={`leaderboard-name${isMe?' is-me':''}`}>{p.name}</div>
