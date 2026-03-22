@@ -347,7 +347,6 @@ function xpForLevel(lv) {
 // 맵 초기화
 function resetMap() {
   tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
-  // 개인 타일 Set 초기화 (XP·레벨은 유지)
   personalTileSets.forEach((set, sid) => {
     set.clear();
     if (players[sid]) {
@@ -355,6 +354,7 @@ function resetMap() {
     }
   });
   bullets = {};
+  // round_reset을 먼저 emit — 클라이언트가 맵 초기화를 완료할 시간을 줌
   io.emit('round_reset', { tiles });
 }
 
@@ -362,14 +362,11 @@ function resetMap() {
 function endRound() {
   round.phase = 'break';
 
-  // 팀별 타일 집계
   const teamTiles = { red: 0, blue: 0, green: 0 };
   tiles.forEach(row => row.forEach(t => { if (t) teamTiles[t]++; }));
 
-  // 승자 결정
   const winner = Object.entries(teamTiles).sort((a, b) => b[1] - a[1])[0][0];
 
-  // 플레이어별 라운드 결과 (순위, 기여 타일)
   const results = Object.values(players)
     .map(p => ({ id: p.id, name: p.name, team: p.team, tiles: p.personalTiles ?? 0, level: calcLevel(p.xp), xp: p.xp ?? 0 }))
     .sort((a, b) => b.tiles - a.tiles);
@@ -377,20 +374,29 @@ function endRound() {
   io.emit('round_end', { winner, teamTiles, results, breakMs: ROUND_BREAK_MS, roundNum: round.num });
   console.log(`🏁 라운드 ${round.num} 종료 — 승자: ${winner} (${teamTiles[winner]}칸)`);
 
-  // 대기 후 새 라운드 시작
   setTimeout(() => {
     round.num++;
     round.phase = 'playing';
     round.endsAt = Date.now() + ROUND_DURATION_MS;
+
+    // XP · 레벨 초기화
+    Object.values(players).forEach(p => { p.xp = 0; });
+
     resetMap();
-    // 모든 플레이어 리스폰
-    Object.entries(players).forEach(([sid, p]) => {
-      const sp = spawnPosition();
-      p.x = sp.x; p.y = sp.y;
-      p.invincibleUntil = Date.now() + INVINCIBLE_MS;
-      io.to(sid).emit('respawn', { x: p.x, y: p.y, invincibleMs: INVINCIBLE_MS });
-    });
+
+    // round_start를 먼저 emit해서 클라이언트가 타이머·상태를 업데이트하게 함
     io.emit('round_start', { roundNum: round.num, endsAt: round.endsAt });
+
+    // respawn은 100ms 뒤 — 클라이언트가 round_reset/round_start를 처리한 후 적용
+    setTimeout(() => {
+      Object.entries(players).forEach(([sid, p]) => {
+        const sp = spawnPosition();
+        p.x = sp.x; p.y = sp.y;
+        p.invincibleUntil = Date.now() + INVINCIBLE_MS;
+        io.to(sid).emit('respawn', { x: p.x, y: p.y, invincibleMs: INVINCIBLE_MS });
+      });
+    }, 100);
+
     console.log(`▶️  라운드 ${round.num} 시작`);
   }, ROUND_BREAK_MS);
 }
