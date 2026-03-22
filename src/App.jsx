@@ -636,8 +636,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         me.tx=me.x; me.ty=me.y;
         if(connected&&(dx||dy)){
           socket.emit('move',{x:me.x,y:me.y});
-          const tx=Math.floor(me.x/TILE_SIZE),ty=Math.floor(me.y/TILE_SIZE);
-          if(s.tiles[ty]?.[tx]!==me.team)socket.emit('paint_tile',{x:tx,y:ty});
+          // paint_tile은 서버의 move 핸들러에서 직접 처리하므로 별도 emit 불필요
         }
 
         // 장전 진행률 — DOM 직접 조작 (React state 없이 60fps 완전 부드럽게)
