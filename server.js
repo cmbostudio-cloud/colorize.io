@@ -246,7 +246,7 @@ function checkRate(socketId, key, limit) {
   return counters[key].count <= limit;
 }
 
-// 위반 처리 — 로그만 남기고 kick은 명시적 임계값 초과 시만
+// 위반 처리 — MAX_VIOLATIONS 초과 시 kick
 function addViolation(socket, reason) {
   const id = socket.id;
   if (!violations.has(id)) {
@@ -260,8 +260,14 @@ function addViolation(socket, reason) {
   const v = violations.get(id);
   v.count++;
   console.warn(`⚠️  위반 [${getIp(socket)}] ${reason} (누적 ${v.count})`);
-  // kick은 명백한 악성 패킷(join 전 이벤트, 비정상 페이로드)에만 적용
-  // rate limit 오탐으로 정상 유저가 kick되는 문제 방지
+
+  if (v.count >= MAX_VIOLATIONS) {
+    console.warn(`🚫 위반 누적 kick: ${getIp(socket)} (${v.count}회)`);
+    clearInterval(v.decayTimer);
+    violations.delete(id);
+    socket.emit('kicked', { reason: 'Too many violations' });
+    socket.disconnect(true);
+  }
 }
 
 // 페이로드 타입 검증 유틸
@@ -303,11 +309,10 @@ function loadTiles() {
 }
 
 function saveTiles() {
-  try {
-    fs.writeFileSync(TILES_FILE, JSON.stringify(tiles), 'utf8');
-  } catch (e) {
-    console.warn('⚠️ 타일 저장 실패:', e.message);
-  }
+  const data = JSON.stringify(tiles);
+  fs.writeFile(TILES_FILE, data, 'utf8', (err) => {
+    if (err) console.warn('⚠️ 타일 저장 실패:', err.message);
+  });
 }
 
 // ── 게임 상태 ────────────────────────────────────────
@@ -351,6 +356,10 @@ function endRound() {
     playerRanks,
   });
 
+  // 맵 초기화 전 배치 버퍼 플러시 (reset 후 stale 패킷 방지)
+  flushTileBatch();
+  tileBatch.length = 0;
+
   // 맵 초기화
   tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
   io.emit('map_reset', { tiles });
@@ -376,9 +385,16 @@ setInterval(() => {
 // 30초마다 자동 저장
 setInterval(saveTiles, SAVE_INTERVAL);
 
-// 서버 종료 시 즉시 저장 (Ctrl+C, nodemon 재시작 등)
-process.on('SIGINT',  () => { saveTiles(); process.exit(0); });
-process.on('SIGTERM', () => { saveTiles(); process.exit(0); });
+// 서버 종료 시 즉시 저장 (Ctrl+C, nodemon 재시작 등) — 종료 시점엔 동기 OK
+function saveTilesSync() {
+  try {
+    fs.writeFileSync(TILES_FILE, JSON.stringify(tiles), 'utf8');
+  } catch (e) {
+    console.warn('⚠️ 타일 종료 저장 실패:', e.message);
+  }
+}
+process.on('SIGINT',  () => { saveTilesSync(); process.exit(0); });
+process.on('SIGTERM', () => { saveTilesSync(); process.exit(0); });
 
 // ── 유틸 ─────────────────────────────────────────────
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
@@ -420,13 +436,30 @@ function tileAt(x, y) {
   return tiles[y][x];
 }
 
-// [FIX-S1] paintTile: owner 옵션 파라미터로 개인 획득 타일 추적
+// ── 타일 변경 배치 버퍼 (틱당 한 번에 emit) ──────────────
+const tileBatch = [];
+let tileBatchFlushScheduled = false;
+
+function flushTileBatch() {
+  tileBatchFlushScheduled = false;
+  if (tileBatch.length === 0) return;
+  if (tileBatch.length === 1) {
+    io.emit('tile_paint', tileBatch[0]);
+  } else {
+    io.emit('tiles_batch', tileBatch.slice());
+  }
+  tileBatch.length = 0;
+}
+
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
   if (tiles[ty][tx] === team) return;
   tiles[ty][tx] = team;
-  io.emit('tile_paint', { x: tx, y: ty, team });
-  // 개인 획득 타일 카운트 (중립→팀, 타팀→팀 모두 카운트)
+  tileBatch.push({ x: tx, y: ty, team });
+  if (!tileBatchFlushScheduled) {
+    tileBatchFlushScheduled = true;
+    setImmediate(flushTileBatch);
+  }
   if (ownerId && players[ownerId]) {
     players[ownerId].roundGained = (players[ownerId].roundGained ?? 0) + 1;
   }
@@ -458,7 +491,11 @@ function loseTiles(team, deadX, deadY) {
 
   owned.slice(0, loss).forEach(({ x, y }) => {
     tiles[y][x] = null;
-    io.emit('tile_paint', { x, y, team: null });
+    tileBatch.push({ x, y, team: null });
+    if (!tileBatchFlushScheduled) {
+      tileBatchFlushScheduled = true;
+      setImmediate(flushTileBatch);
+    }
   });
 }
 
@@ -485,20 +522,30 @@ function checkBulletCollisions() {
       }
     });
 
-    // 플레이어 충돌 (다른 팀, 무적 제외)
+    // 플레이어 충돌 — tunneling 방지: 이전→현재 위치 경로 선분으로 판정
     Object.entries(players).forEach(([pid, p]) => {
       if (toRemove.has(bid)) return;
       if (pid === b.owner) return;
       if (p.team === b.team) return;
-      // 무적 상태면 충돌 무시
       if (p.invincibleUntil && Date.now() < p.invincibleUntil) return;
-      const dist = Math.hypot(p.x - b.x, p.y - b.y);
-      if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
-        // 타일 손실 적용 (죽은 플레이어 위치 기준)
+
+      // 현재 위치 충돌
+      const distCur = Math.hypot(p.x - b.x, p.y - b.y);
+      // 이전 위치 기준 선분과 플레이어 중심 사이의 최단 거리 계산 (tunneling 방지)
+      const bpx = b.prevX ?? b.x, bpy = b.prevY ?? b.y;
+      const ex = b.x - bpx, ey = b.y - bpy;
+      const lenSq = ex * ex + ey * ey;
+      let distSweep = distCur;
+      if (lenSq > 0) {
+        const t = Math.max(0, Math.min(1, ((p.x - bpx) * ex + (p.y - bpy) * ey) / lenSq));
+        const cx = bpx + t * ex, cy = bpy + t * ey;
+        distSweep = Math.hypot(p.x - cx, p.y - cy);
+      }
+
+      if (Math.min(distCur, distSweep) < PLAYER_RADIUS + BULLET_RADIUS) {
         loseTiles(p.team, p.x, p.y);
         const spawn = spawnPosition(p.team);
         p.x = spawn.x; p.y = spawn.y;
-        // 리스폰 시 무적 부여
         p.invincibleUntil = Date.now() + INVINCIBLE_MS;
         io.to(pid).emit('respawn', { x: p.x, y: p.y, invincibleMs: INVINCIBLE_MS });
         io.emit('player_move', { id: pid, x: p.x, y: p.y });
@@ -653,11 +700,12 @@ io.on('connection', (socket) => {
     const isReconnect  = !!players[socket.id];
 
     // 재연결 시 위치·라운드 점수 유지, 신규 접속만 스폰 위치 지정
-    let spawnX, spawnY, prevGained = 0;
+    let spawnX, spawnY, prevGained = 0, prevJoinedAt = Date.now();
     if (isReconnect) {
-      spawnX      = players[socket.id].x;
-      spawnY      = players[socket.id].y;
-      prevGained  = players[socket.id].roundGained ?? 0;
+      spawnX       = players[socket.id].x;
+      spawnY       = players[socket.id].y;
+      prevGained   = players[socket.id].roundGained ?? 0;
+      prevJoinedAt = players[socket.id].joinedAt ?? Date.now(); // 덮어쓰기 전에 저장
     } else {
       const sp = spawnPosition(assignedTeam);
       spawnX = sp.x; spawnY = sp.y;
@@ -672,7 +720,7 @@ io.on('connection', (socket) => {
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
       roundGained:     prevGained,
-      joinedAt:        isReconnect ? players[socket.id]?.joinedAt : Date.now(),
+      joinedAt:        prevJoinedAt,
     };
 
     socket.emit('init', {
