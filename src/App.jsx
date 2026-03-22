@@ -152,12 +152,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[ping,setPing]=useState(0);
   const[killFeed,setKillFeed]=useState([]);
   const[showSettings,setShowSettings]=useState(false);
-  const[roundNumber,setRoundNumber]=useState(1);
-  const[roundResult,setRoundResult]=useState(null);
-  const[resultCountdown,setResultCountdown]=useState(8);
-  const[leaderboard,setLeaderboard]=useState([]); // [{id,name,team,gained}]
-  const roundStartRef=useRef(Date.now());
-  const ROUND_MS=3*60*1000;
+  const[leaderboard,setLeaderboard]=useState([]);
 
   // 리로드바 DOM 직접 조작 (React state 없이 → 60fps 완전 부드럽게)
   const reloadFillRef  = useRef(null); // .reload-bar-fill 엘리먼트
@@ -342,7 +337,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     });
 
     // init — 고스트 방지: GFX 전체 교체
-    socket.on('init',({id,tiles,players,invincibleMs,round})=>{
+    socket.on('init',({id,tiles,players,invincibleMs})=>{
       s.myId=id;
       if(tiles)s.tiles=tiles;
       // 기존 GFX 전부 제거
@@ -358,7 +353,6 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       if(s.players[id]&&invincibleMs){s.players[id].invincibleUntil=Date.now()+invincibleMs;}
       buildTiles(tileLayer,s.tiles); calcScores(s.tiles);
       setPlayerCount(Object.keys(s.players).length);
-      if(round)setRoundNumber(round);
     });
 
     // player_join — 고스트 방지: 중복 GFX 제거 후 재등록
@@ -412,20 +406,6 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     let pingT=0;
     const pingIv=setInterval(()=>{pingT=Date.now();socket.emit('ping_c');},2000);
     socket.on('pong_c',()=>setPing(Date.now()-pingT));
-
-    // 라운드 결과 수신
-    socket.on('round_result',(result)=>{
-      setRoundResult(result);
-      setRoundNumber(result.round+1);
-      roundStartRef.current=Date.now();
-      let cd=8;
-      setResultCountdown(cd);
-      const cdIv=setInterval(()=>{
-        cd--;
-        setResultCountdown(cd);
-        if(cd<=0){ clearInterval(cdIv); setRoundResult(null); }
-      },1000);
-    });
 
     const onKD=e=>{
       // 채팅 입력창 포커스 중엔 게임 키 이벤트 무시
@@ -582,7 +562,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         {/* 개인 순위표 */}
         {leaderboard.length>0&&(
           <div className="leaderboard">
-            <div className="leaderboard-title">🏆 이번 라운드</div>
+            <div className="leaderboard-title">🏆 순위</div>
             {leaderboard.slice(0,8).map((p,i)=>{
               const isMe=socketRef.current&&p.id===socketRef.current.id;
               return(
@@ -590,7 +570,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
                   <div className="leaderboard-rank">{MEDAL[i]??i+1}</div>
                   <div className="leaderboard-dot" style={{background:TEAM_CSS[p.team]??'#999'}}/>
                   <div className={`leaderboard-name${isMe?' is-me':''}`}>{p.name}</div>
-                  <div className="leaderboard-score">+{p.gained}</div>
+                  <div className="leaderboard-score">{p.tiles}</div>
                 </div>
               );
             })}
@@ -621,53 +601,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
           </>
         )}
       </div>
-
-      {/* 라운드 결과 오버레이 */}
-      {roundResult&&(
-        <div className="round-overlay">
-          <div className="round-card">
-            <div className="round-card-title">Round {roundResult.round} 결과</div>
-            <div className="round-card-round">🏁</div>
-
-            {/* 팀 순위 */}
-            <div>
-              <div className="round-section-label">팀 순위 (누적 타일)</div>
-              <div className="round-team-ranks">
-                {roundResult.teamRanks.map((tr,i)=>(
-                  <div key={tr.team} className="round-team-item" style={{background:TEAM_CSS[tr.team]+'22',outline:`2px solid ${TEAM_CSS[tr.team]}44`}}>
-                    <div className="round-team-rank">{MEDAL[i]??`${i+1}`}</div>
-                    <div className="round-team-name" style={{color:TEAM_CSS[tr.team]}}>{t.team_names[tr.team]}</div>
-                    <div className="round-team-tiles">{tr.tiles} tiles</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 개인 순위 */}
-            <div>
-              <div className="round-section-label">이번 라운드 개인 획득 타일</div>
-              <div className="round-player-ranks">
-                {roundResult.playerRanks.length===0
-                  ?<div style={{textAlign:'center',color:'var(--muted)',fontSize:'0.8rem',padding:'8px'}}>플레이어 없음</div>
-                  :roundResult.playerRanks.map((pr,i)=>{
-                    const isMe=socketRef.current&&pr.id===socketRef.current.id;
-                    return(
-                      <div key={pr.id} className={`round-player-item${isMe?' is-me':''}`}>
-                        <div className="round-player-rank-num">{i+1}</div>
-                        <div className="round-player-dot" style={{background:TEAM_CSS[pr.team]??'#999'}}/>
-                        <div className="round-player-name">{pr.name}{isMe?' (나)':''}</div>
-                        <div className="round-player-gained">+{pr.gained} tiles</div>
-                      </div>
-                    );
-                  })
-                }
-              </div>
-            </div>
-
-            <div className="round-countdown">{resultCountdown}초 후 자동으로 닫힘</div>
-          </div>
-        </div>
-      )}
 
       {showSettings&&<SettingsModal lang={lang} onSave={l=>{setLang(l);setShowSettings(false);}} onClose={()=>setShowSettings(false)}/>}
     </div>
