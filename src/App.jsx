@@ -222,9 +222,11 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[roundEnd,setRoundEnd]=useState(null); // { winner, teamTiles, results, breakMs }
   const roundEndsAtRef=useRef(Date.now()+600000);
 
-  // 레벨/XP
+  // 레벨/XP — state는 렌더용, ref는 게임루프(60fps) 직접 참조용
   const[level,setLevel]=useState(1);
   const[xp,setXp]=useState(0);
+  const levelRef=useRef(1);
+  const xpRef=useRef(0);
   const[levelUpAnim,setLevelUpAnim]=useState(null); // 레벨업 연출용
 
   // HUD 타이머 DOM 직접 조작
@@ -238,6 +240,9 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   // 리로드바 DOM 직접 조작 (React state 없이 → 60fps 완전 부드럽게)
   const reloadFillRef  = useRef(null);
   const reloadLabelRef = useRef(null);
+  // XP 바 DOM 직접 조작 (30fps 서버 sync 없이 클라이언트에서 부드럽게)
+  const xpFillRef  = useRef(null);
+  const xpTextRef  = useRef(null);
   const topPlayerIdRef = useRef(null); // 1위 플레이어 ID (왕관 표시용)
 
   // 채팅 말풍선: { [playerId]: { container, text, timer } }
@@ -458,7 +463,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       }
       minimapTilesRef.current=s.tiles;
       if(round){roundEndsAtRef.current=round.endsAt;setRoundNum(round.num);setRoundPhase(round.phase);}
-      if(initXp!=null){setXp(initXp);setLevel(initLevel??1);}
+      if(initXp!=null){setXp(initXp);setLevel(initLevel??1);xpRef.current=initXp;levelRef.current=initLevel??1;}
       // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
         const e=playerGfxMap.current[pid]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[pid];
@@ -530,7 +535,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       setRoundNum(rn);
       setRoundEnd(null);
       roundEndsAtRef.current=endsAt;
-      setXp(0); setLevel(1);
+      setXp(0); setLevel(1); xpRef.current=0; levelRef.current=1;
     });
 
     // 맵 초기화 (라운드 리셋)
@@ -554,12 +559,16 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       calcScores(s.tiles);
     });
 
-    // 레벨업
-    socket.on('level_up',({level:lv,xp:newXp})=>{
-      setLevel(lv);
+    // XP/레벨 업데이트 (매 틱 서버 flush — 레벨업 감지 포함)
+    socket.on('xp_update',({xp:newXp,level:newLv,leveled})=>{
+      xpRef.current   = newXp;
+      levelRef.current = newLv;
+      setLevel(newLv);
       setXp(newXp);
-      setLevelUpAnim(lv);
-      setTimeout(()=>setLevelUpAnim(null),2500);
+      if(leveled){
+        setLevelUpAnim(newLv);
+        setTimeout(()=>setLevelUpAnim(null),2500);
+      }
     });
 
     socket.on('chat',({id,name,team,text})=>{
@@ -660,6 +669,24 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
           reloadLabelRef.current.textContent=!connected?LANGS[langRef.current].reconnecting:invincible?`🛡️ ${invLeft}s`:ready?'🎨':LANGS[langRef.current].reload;
         }
 
+        // XP 바 — ref에서 직접 읽어 DOM 조작 (React re-render 없이 매 프레임 부드럽게)
+        if(xpFillRef.current||xpTextRef.current){
+          const curLv=levelRef.current;
+          const curXp=xpRef.current;
+          const xpNeeded=Math.floor(100*Math.pow(1.1,curLv-1));
+          // 현재 레벨 시작 XP 총합 계산
+          let accumulated=0;
+          for(let i=1;i<curLv;i++) accumulated+=Math.floor(100*Math.pow(1.1,i-1));
+          const xpInLevel=Math.max(0,curXp-accumulated);
+          const pct=xpNeeded>0?Math.min(100,xpInLevel/xpNeeded*100):100;
+          if(xpFillRef.current){
+            xpFillRef.current.style.width=`${pct.toFixed(1)}%`;
+          }
+          if(xpTextRef.current){
+            xpTextRef.current.textContent=`${xpInLevel}/${xpNeeded}`;
+          }
+        }
+
         // 발사 (연결됨 + 장전 완료 + 무적 해제 시에만)
         let shoot=false,sdx=0,sdy=0;
         if(!mobile&&s.mouseDown){const mwx=s.mousePos.x+s.camX,mwy=s.mousePos.y+s.camY;const len=Math.hypot(mwx-me.x,mwy-me.y)||1;sdx=((mwx-me.x)/len)*BULLET_SPEED;sdy=((mwy-me.y)/len)*BULLET_SPEED;shoot=true;}
@@ -720,11 +747,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const gp=(scores.green/total*100).toFixed(1);
   const tc=tcRef.current;
 
-  // XP 바 계산 — 레벨업 필요 XP: 100 * 1.1^(level-1), 1.1배씩 증가
-  function xpForLevel(lv){ return Math.floor(100 * Math.pow(1.1, lv - 1)); }
-  const xpNeeded = xpForLevel(level);  // 현재 레벨에서 다음 레벨까지 필요 XP
-  const xpCurrent = xp % xpNeeded;    // 현재 레벨 내 누적 XP
-  const xpPct = xpNeeded > 0 ? Math.min(100, Math.max(0, xpCurrent / xpNeeded * 100)).toFixed(1) : '100';
+  // XP 바는 game ticker loop에서 DOM 직접 조작 (xpRef/levelRef 기반)
 
   return(
     <div className="game-wrapper">
@@ -742,9 +765,11 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
           <div className="hud-level-wrap">
             <div className="hud-level-row">
               <div className="hud-level">Lv.{level}</div>
-              <div className="hud-xp-text">{xpCurrent}<span className="hud-xp-sep">/</span>{xpNeeded}</div>
+              <div className="hud-xp-text" ref={xpTextRef}>0/100</div>
             </div>
-            <div className="hud-xp-track"><div className="hud-xp-fill" style={{width:`${xpPct}%`,background:TEAM_CSS[playerTeam]}}/></div>
+            <div className="hud-xp-track">
+              <div className="hud-xp-fill" ref={xpFillRef} style={{width:'0%',background:TEAM_CSS[playerTeam]}}/>
+            </div>
           </div>
           <div className="hud-player"><span>{playerName}</span> · {t.team_names[playerTeam]}</div>
           <div className="player-count">👥 {playerCount}</div>
