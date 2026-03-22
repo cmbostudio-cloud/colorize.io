@@ -175,12 +175,12 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   function buildTiles(layer,tiles){
     layer.removeChildren();
     const gfx=new PIXI.Graphics();
-    for(let y=0;y<GRID_H;y++) for(let x=0;x<GRID_W;x++){const team=tiles[y]?.[x];gfx.beginFill(team?TEAM_COLORS[team]:0xE8E4DC,team?1:0.6);gfx.drawRoundedRect(x*TILE_SIZE+3,y*TILE_SIZE+3,TILE_SIZE-6,TILE_SIZE-6,TILE_RADIUS);gfx.endFill();}
+    for(let y=0;y<GRID_H;y++) for(let x=0;x<GRID_W;x++){const team=tiles[y]?.[x];gfx.beginFill(team?TEAM_COLORS[team]:0xE8E4DC,1);gfx.drawRoundedRect(x*TILE_SIZE+3,y*TILE_SIZE+3,TILE_SIZE-6,TILE_SIZE-6,TILE_RADIUS);gfx.endFill();}
     layer.addChild(gfx); tileGfxRef.current=gfx; dirtyCount.current=0; rebuildFlag.current=false;
   }
   function patchTile(tx,ty,team){
     const gfx=tileGfxRef.current; if(!gfx)return;
-    gfx.beginFill(team?TEAM_COLORS[team]:0xE8E4DC,team?1:0.6);
+    gfx.beginFill(team?TEAM_COLORS[team]:0xE8E4DC,1);
     gfx.drawRoundedRect(tx*TILE_SIZE+3,ty*TILE_SIZE+3,TILE_SIZE-6,TILE_SIZE-6,TILE_RADIUS);
     gfx.endFill();
     if(++dirtyCount.current>=REBUILD_THRESHOLD)rebuildFlag.current=true;
