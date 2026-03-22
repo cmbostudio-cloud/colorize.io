@@ -90,8 +90,12 @@ html, body, #root {
 .player-count { font-size:clamp(0.58rem,1.4vw,0.7rem); font-weight:800; color:var(--muted); }
 .hud-settings-btn { background:none; border:none; font-size:clamp(0.9rem,2vw,1.05rem); cursor:pointer; padding:2px; transition:transform 0.25s; }
 .hud-timer { font-size:clamp(0.72rem,1.8vw,0.88rem); font-weight:700; letter-spacing:0.04em; flex-shrink:0; transition:color 0.3s; }
+.hud-buff { font-size:0.65rem; margin-left:2px; }
+.hud-buff-badge { font-size:0.65rem; font-weight:800; background:#FFF3C4; color:#854F0B; border-radius:5px; padding:1px 5px; margin-left:5px; }
+.hud-strongholds { display:flex; gap:5px; align-items:center; flex-shrink:0; }
+.hud-sh-dot { width:10px; height:10px; border-radius:50%; border:1.5px solid rgba(0,0,0,0.12); transition:background 0.4s, box-shadow 0.4s; flex-shrink:0; }
 .hud-settings-btn:hover { transform:rotate(40deg); }
-@media (max-width:480px) and (orientation:portrait) { .hud-player,.player-count { display:none; } }
+@media (max-width:480px) and (orientation:portrait) { .hud-player,.player-count,.hud-strongholds { display:none; } }
 
 /* Canvas */
 #pixi-container { flex:1; overflow:hidden; position:relative; cursor:crosshair; touch-action:none; }
