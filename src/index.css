@@ -131,11 +131,11 @@ html, body, #root {
 @media (orientation:portrait) { .joystick-area { bottom:clamp(20px,4vh,36px); } }
 
 /* Chat */
-.chat-wrap { position:absolute; bottom:38px; left:12px; width:min(260px,38vw); z-index:15; display:flex; flex-direction:column; gap:6px; }
+.chat-wrap { position:absolute; bottom:0; left:0; right:0; width:100%; z-index:15; display:flex; flex-direction:column; gap:0; background:rgba(247,245,240,0.88); backdrop-filter:blur(8px); border-top:1px solid rgba(0,0,0,0.07); padding:6px 10px 8px; }
 @media (max-width:768px) and (pointer:coarse) { .chat-wrap { display:none; } }
 .chat-messages { max-height:130px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; scrollbar-width:none; }
 .chat-messages::-webkit-scrollbar { display:none; }
-.chat-msg { background:rgba(255,255,255,0.84); backdrop-filter:blur(4px); border-radius:8px; padding:4px 9px; font-size:0.7rem; font-weight:700; color:var(--text); word-break:break-all; animation:slideIn 0.15s ease; }
+.chat-msg { border-radius:6px; padding:2px 6px; font-size:0.7rem; font-weight:700; color:var(--text); word-break:break-all; animation:slideIn 0.15s ease; }
 .chat-msg .chat-name { font-weight:900; margin-right:4px; }
 .chat-input-row { display:flex; gap:5px; }
 .chat-input { flex:1; border:2px solid rgba(255,255,255,0.5); border-radius:10px; padding:6px 10px; font-size:0.72rem; font-family:'Nunito',sans-serif; font-weight:700; color:var(--text); outline:none; background:rgba(255,255,255,0.84); backdrop-filter:blur(4px); transition:border 0.15s; }
@@ -198,3 +198,32 @@ html, body, #root {
 .levelup-anim { position:absolute; top:40%; left:50%; transform:translate(-50%,-50%); pointer-events:none; z-index:40; text-align:center; animation:levelup 2.5s ease forwards; }
 .levelup-text { font-size:clamp(1.2rem,4vw,1.8rem); font-weight:900; color:#FFD700; text-shadow:0 2px 12px rgba(0,0,0,0.35); letter-spacing:0.08em; }
 .levelup-num  { font-size:clamp(1.8rem,6vw,2.8rem); font-weight:900; color:#fff; text-shadow:0 2px 16px rgba(0,0,0,0.4); }
+
+/* ══ UPGRADE PANEL ══ */
+.upgrade-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:60; backdrop-filter:blur(4px); animation:fadeIn 0.18s ease; }
+.upgrade-panel { background:var(--card); border-radius:22px; padding:22px 20px 18px; box-shadow:0 8px 40px rgba(0,0,0,0.22); width:min(380px,92vw); display:flex; flex-direction:column; gap:14px; max-height:90vh; overflow-y:auto; }
+.upgrade-header { display:flex; align-items:center; gap:8px; }
+.upgrade-title { font-size:1rem; font-weight:900; flex:1; display:flex; align-items:center; gap:6px; }
+.upgrade-title-icon { font-size:1.1rem; }
+.upgrade-points-badge { font-size:0.75rem; font-weight:800; color:var(--blue); background:#EFF5FF; border-radius:20px; padding:3px 10px; flex-shrink:0; }
+.upgrade-close { background:#F0F0F0; border:none; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.9rem; color:var(--muted); transition:background 0.15s; flex-shrink:0; }
+.upgrade-close:hover { background:#E0E0E0; }
+.upgrade-list { display:flex; flex-direction:column; gap:8px; }
+.upgrade-row { display:flex; align-items:center; gap:12px; background:#F9F9F9; border-radius:14px; padding:11px 13px; transition:background 0.15s; }
+.upgrade-row.maxed { opacity:0.55; }
+.upgrade-icon { font-size:1.5rem; width:36px; text-align:center; flex-shrink:0; }
+.upgrade-info { flex:1; min-width:0; }
+.upgrade-name { font-size:0.82rem; font-weight:900; color:var(--text); }
+.upgrade-desc { font-size:0.67rem; font-weight:700; color:var(--muted); margin-top:1px; }
+.upgrade-stars { display:flex; gap:3px; margin-top:5px; }
+.upgrade-star { width:12px; height:6px; border-radius:3px; background:#E8E8E8; transition:background 0.2s; }
+.upgrade-star.filled { background:var(--blue); }
+.upgrade-btn { width:36px; height:36px; border-radius:10px; border:none; font-size:1.1rem; font-weight:900; cursor:pointer; flex-shrink:0; background:#E8E8E8; color:#BBB; transition:all 0.15s; }
+.upgrade-btn.active { background:var(--blue); color:#fff; box-shadow:0 3px 10px rgba(92,158,255,0.4); }
+.upgrade-btn.active:hover { opacity:0.88; transform:scale(1.06); }
+.upgrade-btn:disabled { cursor:default; }
+.upgrade-footer { text-align:center; font-size:0.7rem; font-weight:700; color:var(--muted); padding-top:4px; }
+
+/* HUD 업그레이드 버튼 (포인트 알림) */
+.hud-upgrade-btn { border:none; border-radius:20px; background:var(--blue); color:#fff; font-size:0.6rem; font-weight:900; cursor:pointer; padding:1px 6px; min-width:18px; height:16px; line-height:1; animation:pulse-upgrade 1.2s ease infinite; flex-shrink:0; }
+@keyframes pulse-upgrade { 0%,100%{box-shadow:0 0 0 0 rgba(92,158,255,0.6);} 50%{box-shadow:0 0 0 5px rgba(92,158,255,0);} }
