@@ -74,7 +74,7 @@ function isMobile(){return('ontouchstart'in window||navigator.maxTouchPoints>0)&
 
 /* ══════════════ LOGO ══════════════ */
 function Logo(){
-  return [... 'colorize'].map((ch,i)=>(
+  return [... 'daubs'].map((ch,i)=>(
     <span key={i} style={{color:[TEAM_CSS.red,TEAM_CSS.blue,TEAM_CSS.green][i%3]}}>{ch}</span>
   ));
 }
@@ -1087,7 +1087,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
 
 /* ══════════════ APP ROOT ══════════════ */
 function AppRoot(){
-  const[lang,setLangState]=useState(()=>localStorage.getItem('cz_lang')||'en');
+  const[lang,setLangState]=useState(()=>localStorage.getItem('db_lang')||'en');
   const[phase,setPhase]=useState('lobby');
   const[pName,setPName]=useState('');
   const[pTeam,setPTeam]=useState('blue');
@@ -1105,7 +1105,7 @@ function AppRoot(){
     return()=>{s.disconnect();socketRef.current=null;};
   },[]);
 
-  function setLang(l){localStorage.setItem('cz_lang',l);setLangState(l);}
+  function setLang(l){localStorage.setItem('db_lang',l);setLangState(l);}
   function handleJoin(name,team){
     // 로비 소켓 연결 해제 — Game이 새로 연결함
     if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
