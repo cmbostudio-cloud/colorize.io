@@ -200,6 +200,21 @@ const CTRL_STRIP_RE      = /[\x00-\x1F\x7F]/g;
 
 const TEAMS = ['red', 'blue', 'green'];
 
+// ── 거점 시스템 ───────────────────────────────────────
+const STRONGHOLD_POSITIONS = [
+  { id: 'center', x: Math.floor(GRID_W / 2),    y: Math.floor(GRID_H / 2) },
+  { id: 'left',   x: Math.floor(GRID_W * 0.18), y: Math.floor(GRID_H * 0.25) },
+  { id: 'right',  x: Math.floor(GRID_W * 0.82), y: Math.floor(GRID_H * 0.75) },
+];
+const STRONGHOLD_RADIUS  = 3;    // 거점 판정 반경 (타일 단위)
+const BUFF_BULLET_MULT   = 1.3;  // 거점 점령 시 총알 속도 30% 증가
+const BUFF_SHOOT_CD_MULT = 0.75; // 거점 점령 시 쿨타임 25% 감소
+
+// ── 영역 세금 ─────────────────────────────────────────
+const TAX_THRESHOLD = 0.40; // 칠해진 타일 중 40% 초과 팀에 세금
+const TAX_INTERVAL  = 15000;// 15초마다 부과
+const TAX_TILES     = 4;    // 외곽 타일 제거 수
+
 // ── 팀 자동 배정: 인원이 가장 적은 팀 반환 ──────────────
 function getBalancedTeam(preferredTeam) {
   const counts = { red: 0, blue: 0, green: 0 };
@@ -320,6 +335,104 @@ let players = {};
 let bullets = {};
 let bulletIdCounter = 0;
 
+// ── 거점 상태 ─────────────────────────────────────────
+// { id, x, y, owner: 'red'|'blue'|'green'|null, progress: {red,blue,green} }
+let strongholds = STRONGHOLD_POSITIONS.map(s => ({ ...s, owner: null }));
+
+// 거점 점령 상태 계산 — 반경 내 타일 집계
+function calcStrongholdOwner(sh) {
+  const counts = { red: 0, blue: 0, green: 0, null: 0 };
+  for (let dy = -STRONGHOLD_RADIUS; dy <= STRONGHOLD_RADIUS; dy++) {
+    for (let dx = -STRONGHOLD_RADIUS; dx <= STRONGHOLD_RADIUS; dx++) {
+      if (dx * dx + dy * dy > STRONGHOLD_RADIUS * STRONGHOLD_RADIUS) continue;
+      const tx = sh.x + dx, ty = sh.y + dy;
+      if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) continue;
+      const t = tiles[ty][tx] ?? 'null';
+      counts[t] = (counts[t] ?? 0) + 1;
+    }
+  }
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  for (const team of TEAMS) {
+    if (counts[team] / total > 0.5) return team;
+  }
+  return null;
+}
+
+// 거점 상태 갱신 및 변경 시 브로드캐스트
+function updateStrongholds() {
+  let changed = false;
+  strongholds.forEach(sh => {
+    const newOwner = calcStrongholdOwner(sh);
+    if (newOwner !== sh.owner) {
+      sh.owner = newOwner;
+      changed = true;
+    }
+  });
+  if (changed) broadcastStrongholds();
+}
+
+function broadcastStrongholds() {
+  io.emit('strongholds', strongholds.map(sh => ({
+    id: sh.id, x: sh.x, y: sh.y, owner: sh.owner,
+  })));
+}
+
+// 특정 플레이어의 거점 버프 배율 반환
+function getPlayerBuff(p) {
+  const hasStronghold = strongholds.some(sh => sh.owner === p.team);
+  return {
+    bulletMult: hasStronghold ? BUFF_BULLET_MULT   : 1.0,
+    cdMult:     hasStronghold ? BUFF_SHOOT_CD_MULT : 1.0,
+  };
+}
+
+// ── 영역 세금 ─────────────────────────────────────────
+function applyTerritoryTax() {
+  const scores = getScores();
+  const paintedTotal = Object.values(scores).reduce((a, b) => a + b, 0);
+  if (paintedTotal === 0) return;
+
+  TEAMS.forEach(team => {
+    if (scores[team] / paintedTotal <= TAX_THRESHOLD) return;
+
+    // 해당 팀 외곽 타일 수집 (인접 8칸 중 아군 타일이 아닌 칸이 있는 타일 = 외곽)
+    const outerTiles = [];
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        if (tiles[y][x] !== team) continue;
+        const isOuter = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]].some(([dx, dy]) => {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= GRID_W || ny < 0 || ny >= GRID_H) return true;
+          return tiles[ny][nx] !== team;
+        });
+        if (isOuter) outerTiles.push({ x, y });
+      }
+    }
+    if (outerTiles.length === 0) return;
+
+    // 거점 주변 타일은 세금 대상 제외 (거점 사수 가치 보호)
+    const safeTiles = outerTiles.filter(({ x, y }) =>
+      !strongholds.some(sh => Math.hypot(x - sh.x, y - sh.y) <= STRONGHOLD_RADIUS)
+    );
+    const pool = safeTiles.length > 0 ? safeTiles : outerTiles;
+
+    // 랜덤 셔플 후 TAX_TILES개 제거
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    pool.slice(0, TAX_TILES).forEach(({ x, y }) => {
+      tiles[y][x] = null;
+      tileBatch.push({ x, y, team: null });
+    });
+    if (!tileBatchFlushScheduled) {
+      tileBatchFlushScheduled = true;
+      setImmediate(flushTileBatch);
+    }
+    console.log(`💸 영역 세금: ${team} -${Math.min(TAX_TILES, pool.length)}타일`);
+  });
+}
+
 // ── 라운드 상태 ───────────────────────────────────────
 let roundStartTime = Date.now();
 let roundNumber    = 1;
@@ -363,6 +476,10 @@ function endRound() {
   tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
   io.emit('map_reset', { tiles });
 
+  // 거점 초기화
+  strongholds.forEach(sh => { sh.owner = null; });
+  broadcastStrongholds();
+
   // 개인 라운드 스탯 초기화 + joinedAt 갱신
   Object.values(players).forEach(p => {
     p.roundGained = 0;
@@ -380,6 +497,12 @@ setInterval(endRound, ROUND_MS);
 setInterval(() => {
   io.emit('round_tick', { timeLeft: getRoundTimeLeft() });
 }, 1000);
+
+// 15초마다 영역 세금
+setInterval(applyTerritoryTax, TAX_INTERVAL);
+
+// 2초마다 거점 상태 갱신 (move 핸들러에서도 트리거하지만 주기적으로 보정)
+setInterval(updateStrongholds, 2000);
 
 // 30초마다 자동 저장
 setInterval(saveTiles, SAVE_INTERVAL);
@@ -643,7 +766,13 @@ setInterval(() => {
     }))
     .sort((a, b) => b.gained - a.gained);
 
-  io.emit('leaderboard', { leaderboard, teamTiles });
+  // 팀별 버프 현황 (거점 점령 팀)
+  const teamBuffs = {};
+  TEAMS.forEach(t => {
+    teamBuffs[t] = strongholds.some(sh => sh.owner === t);
+  });
+
+  io.emit('leaderboard', { leaderboard, teamTiles, teamBuffs });
 }, 2000);
 
 // ── Socket.io 이벤트 ──────────────────────────────────
@@ -728,6 +857,7 @@ io.on('connection', (socket) => {
       invincibleMs:  INVINCIBLE_MS,
       round:         roundNumber,
       roundTimeLeft: getRoundTimeLeft(),
+      strongholds:   strongholds.map(sh => ({ id: sh.id, x: sh.x, y: sh.y, owner: sh.owner })),
       players: Object.fromEntries(
         Object.entries(players).map(([id, p]) => [id, sanitizePlayer(p)])
       ),
@@ -781,6 +911,12 @@ io.on('connection', (socket) => {
     const ty = Math.floor(p.y / TILE_SIZE);
     paintTile(tx, ty, p.team, socket.id);
 
+    // 거점 영향권 내 이동 시 즉시 갱신
+    const nearStronghold = strongholds.some(sh =>
+      Math.hypot(tx - sh.x, ty - sh.y) <= STRONGHOLD_RADIUS + 1
+    );
+    if (nearStronghold) updateStrongholds();
+
     socket.broadcast.emit('player_move', { id: socket.id, x: p.x, y: p.y, invincibleUntil: p.invincibleUntil ?? 0 });
   });
 
@@ -798,9 +934,11 @@ io.on('connection', (socket) => {
     // 무적 중 발사 불가
     if (p.invincibleUntil && Date.now() < p.invincibleUntil) return;
 
-    // 쿨다운
+    // 쿨다운 (거점 버프 적용)
     const now = Date.now();
-    if (now - p.lastShot < SHOOT_COOLDOWN) return;
+    const { bulletMult, cdMult } = getPlayerBuff(p);
+    const effectiveCd = Math.floor(SHOOT_COOLDOWN * cdMult);
+    if (now - p.lastShot < effectiveCd) return;
 
     // 페이로드 검증
     if (!payload || !isFiniteNum(payload.dx) || !isFiniteNum(payload.dy)) {
@@ -812,8 +950,9 @@ io.on('connection', (socket) => {
     if (len === 0) return;
 
     p.lastShot = now;
-    const ndx = (payload.dx / len) * BULLET_SPEED;
-    const ndy = (payload.dy / len) * BULLET_SPEED;
+    const speed = BULLET_SPEED * bulletMult;
+    const ndx = (payload.dx / len) * speed;
+    const ndy = (payload.dy / len) * speed;
 
     const id = `b_${bulletIdCounter++}`;
     bullets[id] = {
