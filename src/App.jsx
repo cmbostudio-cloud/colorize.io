@@ -6,10 +6,10 @@ import { io } from 'socket.io-client';
 
 /* ══════════════ I18N ══════════════ */
 const LANGS = {
-  en: { code:'en', flag:'🇺🇸', label:'English', nickname:'Nickname', nickname_ph:'Enter your name', team:'Choose Team', red:'Red', blue:'Blue', green:'Green', start:'Play →', settings:'Settings', language:'Language', save:'Save', reload:'RELOAD', reconnecting:'🔄 Reconnecting', ping:'ping', move_hint:'Move', shoot_hint:'Hold 🖱 to Shoot', joystick_move:'MOVE', joystick_shoot:'SHOOT', chat_ph:'Press Enter to chat', chat_send:'Send', join_msg:n=>`🎮 ${n} joined`, leave_msg:n=>`👋 ${n} left`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'Red',blue:'Blue',green:'Green'}, leaderboard_title:'🏆 Ranking', tiles_unit:n=>`${n} tiles`, players_unit:n=>`${n}P` },
-  ko: { code:'ko', flag:'🇰🇷', label:'한국어', nickname:'닉네임', nickname_ph:'이름을 입력하세요', team:'팀 선택', red:'레드', blue:'블루', green:'그린', start:'게임 시작 →', settings:'설정', language:'언어', save:'저장', reload:'장전 중', reconnecting:'🔄 재연결 중', ping:'ping', move_hint:'이동', shoot_hint:'🖱 꾹 누르면 발사', joystick_move:'이동', joystick_shoot:'발사', chat_ph:'Enter로 채팅', chat_send:'전송', join_msg:n=>`🎮 ${n} 입장`, leave_msg:n=>`👋 ${n} 퇴장`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'레드팀',blue:'블루팀',green:'그린팀'}, leaderboard_title:'🏆 순위', tiles_unit:n=>`${n}칸`, players_unit:n=>`${n}명` },
-  ja: { code:'ja', flag:'🇯🇵', label:'日本語', nickname:'ニックネーム', nickname_ph:'名前を入力', team:'チーム選択', red:'レッド', blue:'ブルー', green:'グリーン', start:'プレイ →', settings:'設定', language:'言語', save:'保存', reload:'リロード', reconnecting:'🔄 再接続中', ping:'ping', move_hint:'移動', shoot_hint:'🖱 長押しで射撃', joystick_move:'移動', joystick_shoot:'射撃', chat_ph:'Enterでチャット', chat_send:'送信', join_msg:n=>`🎮 ${n} 参加`, leave_msg:n=>`👋 ${n} 退出`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'レッド',blue:'ブルー',green:'グリーン'}, leaderboard_title:'🏆 ランキング', tiles_unit:n=>`${n}マス`, players_unit:n=>`${n}人` },
-  zh: { code:'zh', flag:'🇨🇳', label:'中文', nickname:'昵称', nickname_ph:'输入你的名字', team:'选择队伍', red:'红队', blue:'蓝队', green:'绿队', start:'开始游戏 →', settings:'设置', language:'语言', save:'保存', reload:'装弹中', reconnecting:'🔄 重新连接', ping:'延迟', move_hint:'移动', shoot_hint:'🖱 长按射击', joystick_move:'移动', joystick_shoot:'射击', chat_ph:'按Enter聊天', chat_send:'发送', join_msg:n=>`🎮 ${n} 加入`, leave_msg:n=>`👋 ${n} 离开`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'红队',blue:'蓝队',green:'绿队'}, leaderboard_title:'🏆 排行榜', tiles_unit:n=>`${n}格`, players_unit:n=>`${n}人` },
+  en: { code:'en', flag:'🇺🇸', label:'English', nickname:'Nickname', nickname_ph:'Enter your name', team:'Choose Team', red:'Red', blue:'Blue', green:'Green', start:'Play →', settings:'Settings', language:'Language', save:'Save', reload:'RELOAD', reconnecting:'🔄 Reconnecting', ping:'ping', move_hint:'Move', shoot_hint:'Hold 🖱 to Shoot', joystick_move:'MOVE', joystick_shoot:'SHOOT', chat_ph:'Press Enter to chat', chat_send:'Send', join_msg:n=>`🎮 ${n} joined`, leave_msg:n=>`👋 ${n} left`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'Red',blue:'Blue',green:'Green'}, leaderboard_title:'🏆 Ranking', tiles_unit:n=>`${n} tiles`, players_unit:n=>`${n}P`, next_round:'Next round in' },
+  ko: { code:'ko', flag:'🇰🇷', label:'한국어', nickname:'닉네임', nickname_ph:'이름을 입력하세요', team:'팀 선택', red:'레드', blue:'블루', green:'그린', start:'게임 시작 →', settings:'설정', language:'언어', save:'저장', reload:'장전 중', reconnecting:'🔄 재연결 중', ping:'ping', move_hint:'이동', shoot_hint:'🖱 꾹 누르면 발사', joystick_move:'이동', joystick_shoot:'발사', chat_ph:'Enter로 채팅', chat_send:'전송', join_msg:n=>`🎮 ${n} 입장`, leave_msg:n=>`👋 ${n} 퇴장`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'레드팀',blue:'블루팀',green:'그린팀'}, leaderboard_title:'🏆 순위', tiles_unit:n=>`${n}칸`, players_unit:n=>`${n}명`, next_round:'다음 라운드까지' },
+  ja: { code:'ja', flag:'🇯🇵', label:'日本語', nickname:'ニックネーム', nickname_ph:'名前を入力', team:'チーム選択', red:'レッド', blue:'ブルー', green:'グリーン', start:'プレイ →', settings:'設定', language:'言語', save:'保存', reload:'リロード', reconnecting:'🔄 再接続中', ping:'ping', move_hint:'移動', shoot_hint:'🖱 長押しで射撃', joystick_move:'移動', joystick_shoot:'射撃', chat_ph:'Enterでチャット', chat_send:'送信', join_msg:n=>`🎮 ${n} 参加`, leave_msg:n=>`👋 ${n} 退出`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'レッド',blue:'ブルー',green:'グリーン'}, leaderboard_title:'🏆 ランキング', tiles_unit:n=>`${n}マス`, players_unit:n=>`${n}人`, next_round:'次のラウンドまで' },
+  zh: { code:'zh', flag:'🇨🇳', label:'中文', nickname:'昵称', nickname_ph:'输入你的名字', team:'选择队伍', red:'红队', blue:'蓝队', green:'绿队', start:'开始游戏 →', settings:'设置', language:'语言', save:'保存', reload:'装弹中', reconnecting:'🔄 重新连接', ping:'延迟', move_hint:'移动', shoot_hint:'🖱 长按射击', joystick_move:'移动', joystick_shoot:'射击', chat_ph:'按Enter聊天', chat_send:'发送', join_msg:n=>`🎮 ${n} 加入`, leave_msg:n=>`👋 ${n} 离开`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'红队',blue:'蓝队',green:'绿队'}, leaderboard_title:'🏆 排行榜', tiles_unit:n=>`${n}格`, players_unit:n=>`${n}人`, next_round:'下一轮' },
 };
 
 /* ══════════════ CONSTANTS ══════════════ */
@@ -22,6 +22,13 @@ const TEAM_COLORS={red:0xFF5C5C,blue:0x5C9EFF,green:0x5CDB95};
 const TEAM_CSS   ={red:'#FF5C5C',blue:'#5C9EFF',green:'#5CDB95'};
 function lerp(a,b,t){return a+(b-a)*t;}
 function isMobile(){return('ontouchstart'in window||navigator.maxTouchPoints>0)&&!/Windows|Macintosh|Linux(?!.*Android)/i.test(navigator.userAgent);}
+
+/* ══════════════ LOGO ══════════════ */
+function Logo(){
+  return [... 'colorize'].map((ch,i)=>(
+    <span key={i} style={{color:[TEAM_CSS.red,TEAM_CSS.blue,TEAM_CSS.green][i%3]}}>{ch}</span>
+  ));
+}
 
 /* ══════════════ SETTINGS MODAL ══════════════ */
 function SettingsModal({lang,onSave,onClose}){
@@ -57,7 +64,6 @@ function Lobby({onJoin,lang,setLang,teamCounts}){
   const[showSettings,setShowSettings]=useState(false);
   const teamDefs=[{id:'red',label:t.red,color:TEAM_CSS.red},{id:'blue',label:t.blue,color:TEAM_CSS.blue},{id:'green',label:t.green,color:TEAM_CSS.green}];
   const go=()=>onJoin(name.trim()||'Player',team);
-  const Logo=()=>[...'colorize'].map((ch,i)=><span key={i} style={{color:[TEAM_CSS.red,TEAM_CSS.blue,TEAM_CSS.green][i%3]}}>{ch}</span>);
   const Teams=()=>teamDefs.map(tm=>(
     <button key={tm.id} className={`team-btn ${team===tm.id?`active-${tm.id}`:''}`} onClick={()=>setTeam(tm.id)}>
       <div className="team-dot" style={{background:tm.color}}/>
@@ -176,7 +182,7 @@ function MiniMap({tilesRef,playersRef,myTeam,myIdRef,expanded,onToggle}){
     }
     draw();
     return()=>cancelAnimationFrame(raf);
-  },[tilesRef,playersRef,myTeam,myIdRef,w,h,scaleX,scaleY]);
+  },[tilesRef,playersRef,myTeam,myIdRef,expanded]);
 
   return(
     <div className={`minimap-wrap${expanded?' expanded':''}`} onClick={onToggle} title="클릭하여 확대/축소">
@@ -506,7 +512,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     socket.on('round_end',({winner,teamTiles,results,breakMs,roundNum:rn})=>{
       setRoundPhase('break');
       setRoundNum(rn);
-      setRoundEnd({winner,teamTiles,results,breakMs});
+      // breakEndsAt: 현재 시각 + 대기 시간 → 실시간 카운트다운용
+      setRoundEnd({winner,teamTiles,results,breakEndsAt:Date.now()+(breakMs??15000)});
     });
 
     // 새 라운드 시작 — XP/레벨 초기화
@@ -698,10 +705,11 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const gp=(scores.green/total*100).toFixed(1);
   const tc=tcRef.current;
 
-  // XP 바 계산
+  // XP 바 계산 — 음수·NaN·0나눗셈 방어
   const curLvXp = level*level*10;
   const nxtLvXp = (level+1)*(level+1)*10;
-  const xpPct   = Math.min(100,((xp-curLvXp)/(nxtLvXp-curLvXp)*100)).toFixed(1);
+  const xpRange = nxtLvXp - curLvXp;
+  const xpPct   = xpRange>0 ? Math.min(100, Math.max(0, (xp-curLvXp)/xpRange*100)).toFixed(1) : '100';
 
   return(
     <div className="game-wrapper">
@@ -817,7 +825,9 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
                 ))}
               </div>
               <div className="round-break-msg">
-                {roundPhase==='break'?`Next round in ${Math.ceil((roundEnd.breakMs??15000)/1000)}s...`:'Starting...'}
+                {roundPhase==='break'
+                  ?`${t.next_round} ${Math.max(0,Math.ceil((roundEnd.breakEndsAt-Date.now())/1000))}s...`
+                  :'Starting...'}
               </div>
             </div>
           </div>
