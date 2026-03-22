@@ -224,6 +224,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[roundTimeLeft,setRoundTimeLeft]=useState(ROUND_MS);
   const[mobileChatOpen,setMobileChatOpen]=useState(false);
   const[strongholds,setStrongholds]=useState([]);
+  const strongholdsRef=useRef([]);  // ticker/PIXI에서 항상 최신값 접근용
   const[teamBuffs,setTeamBuffs]=useState({red:false,blue:false,green:false});
   const mobileChatOpenRef=useRef(false);
   const _setMobileChatOpen=(v)=>{ mobileChatOpenRef.current=v; setMobileChatOpen(v); };
@@ -435,7 +436,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
         label.style.fill = sh.owner ? 0xFFFFFF : 0x999999;
       });
     }
-    renderShRef.current = renderStrongholds;
+    renderStrongholds(strongholdsRef.current); // 초기 렌더 (거점 위치 즉시 표시)
 
     const socket=io(SERVER_URL,{
       transports:['websocket'],
@@ -476,7 +477,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       setPlayerCount(Object.keys(s.players).length);
       if(round)setRoundNumber(round);
       if(roundTimeLeft!=null)setRoundTimeLeft(roundTimeLeft);
-      if(initSh)setStrongholds(initSh);
+      if(initSh){ strongholdsRef.current=initSh; setStrongholds(initSh); }
     });
 
     // player_join — 고스트 방지: 중복 GFX 제거 후 재등록
@@ -517,7 +518,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       if(tb) setTeamBuffs(tb);
     });
     // 거점 상태 갱신
-    socket.on('strongholds',(data)=>setStrongholds(data));
+    socket.on('strongholds',(data)=>{ strongholdsRef.current=data; setStrongholds(data); });
     socket.on('chat',({id,name,team,text})=>{
       const color=TEAM_CSS[team]??'#999';
       setChatMsgs(msgs=>[...msgs.slice(-49),{id:Date.now()+Math.random(),name,color,text}]);
@@ -664,6 +665,8 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       if(rebuildFlag.current)buildTiles(tileLayer,s.tiles);
       renderPlayers(app,playerLayer,s.players,s.myId,now);
       renderBullets(app,bulletLayer,s.bullets);
+      // 거점 렌더 — ref로 항상 최신 데이터 접근 (타이밍 문제 없음)
+      renderStrongholds(strongholdsRef.current);
     });
 
     cv.addEventListener('webglcontextlost',e=>{e.preventDefault();},false);
@@ -682,13 +685,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       app.destroy(true);
     };
   },[]);
-
-  // 거점 상태 변경 시 PIXI 렌더 (shLayerRef로 클로저 브리지)
-  const shLayerRef = useRef(null);
-  const renderShRef = useRef(null);
-  useEffect(()=>{
-    if(renderShRef.current) renderShRef.current(strongholds);
-  },[strongholds]);
 
   // 팀 색상 ref (게임루프 클로저에서 접근용)
   const tcRef = useRef(TEAM_CSS[playerTeam] ?? '#999');
