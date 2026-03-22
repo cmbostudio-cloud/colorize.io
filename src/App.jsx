@@ -113,7 +113,6 @@ function useJoystick(elRef){
 }
 
 /* ══════════════ CHAT BOX ══════════════ */
-/* ══════════════ CHAT BOX (데스크탑) ══════════════ */
 function ChatBox({lang,msgs,input,setInput,onSend}){
   const t=LANGS[lang];
   const ref=useRef(null);
@@ -129,70 +128,6 @@ function ChatBox({lang,msgs,input,setInput,onSend}){
         <button className="chat-send" onClick={onSend}>{t.chat_send}</button>
       </div>
     </div>
-  );
-}
-
-/* ══════════════ MOBILE CHAT ══════════════ */
-function MobileChat({lang,msgs,input,setInput,onSend,open,setOpen}){
-  const t=LANGS[lang];
-  const msgsRef=useRef(null);
-  const inputRef=useRef(null);
-  useEffect(()=>{if(msgsRef.current)msgsRef.current.scrollTop=msgsRef.current.scrollHeight;},[msgs]);
-  useEffect(()=>{
-    if(open&&inputRef.current){
-      // 키보드가 올라오기 전에 약간 딜레이
-      setTimeout(()=>inputRef.current?.focus(),120);
-    }
-  },[open]);
-
-  const submit=()=>{
-    onSend();
-    // 전송 후 입력창 닫기
-    setOpen(false);
-  };
-
-  return(
-    <>
-      {/* 상단 메시지 피드 — 항상 표시 */}
-      <div className="mob-chat-feed">
-        <div className="mob-chat-messages" ref={msgsRef}>
-          {msgs.slice(-6).map(m=>(
-            <div key={m.id} className="chat-msg">
-              <span className="chat-name" style={{color:m.color}}>{m.name}</span>{m.text}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 채팅 열기 버튼 — 하단 중앙 */}
-      {!open&&(
-        <button
-          className="mob-chat-btn"
-          onPointerDown={e=>{e.stopPropagation();setOpen(true);}}
-        >💬</button>
-      )}
-
-      {/* 입력 오버레이 */}
-      {open&&(
-        <div className="mob-chat-overlay" onPointerDown={e=>{if(e.target===e.currentTarget)setOpen(false);}}>
-          <div className="mob-chat-panel">
-            <div className="mob-chat-input-row">
-              <input
-                ref={inputRef}
-                className="chat-input"
-                placeholder={t.chat_ph}
-                value={input}
-                onChange={e=>setInput(e.target.value)}
-                onKeyDown={e=>{if(e.key==='Enter'){e.stopPropagation();submit();}}}
-                maxLength={80}
-              />
-              <button className="chat-send" onPointerDown={e=>{e.stopPropagation();submit();}}>{t.chat_send}</button>
-              <button className="mob-chat-close" onPointerDown={e=>{e.stopPropagation();setOpen(false);}}>✕</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
   );
 }
 
@@ -220,14 +155,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[roundNumber,setRoundNumber]=useState(1);
   const[roundResult,setRoundResult]=useState(null);
   const[resultCountdown,setResultCountdown]=useState(8);
-  const[leaderboard,setLeaderboard]=useState([]);
-  const[roundTimeLeft,setRoundTimeLeft]=useState(ROUND_MS);
-  const[mobileChatOpen,setMobileChatOpen]=useState(false);
-  const[strongholds,setStrongholds]=useState([]);
-  const strongholdsRef=useRef([]);  // ticker/PIXI에서 항상 최신값 접근용
-  const[teamBuffs,setTeamBuffs]=useState({red:false,blue:false,green:false});
-  const mobileChatOpenRef=useRef(false);
-  const _setMobileChatOpen=(v)=>{ mobileChatOpenRef.current=v; setMobileChatOpen(v); };
+  const[leaderboard,setLeaderboard]=useState([]); // [{id,name,team,gained}]
   const roundStartRef=useRef(Date.now());
   const ROUND_MS=3*60*1000;
 
@@ -387,60 +315,9 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
 
     const app=new PIXI.Application({resizeTo:containerRef.current,backgroundColor:0xF7F5F0,antialias:true,autoDensity:true});
     containerRef.current.appendChild(app.view);
-    const tileLayer=new PIXI.Container(), playerLayer=new PIXI.Container(), shLayer=new PIXI.Container(), bulletLayer=new PIXI.Container();
-    app.stage.addChild(tileLayer,playerLayer,shLayer,bulletLayer);
+    const tileLayer=new PIXI.Container(), playerLayer=new PIXI.Container(), bulletLayer=new PIXI.Container();
+    app.stage.addChild(tileLayer,playerLayer,bulletLayer);
     buildTiles(tileLayer,s.tiles);
-
-    // ── 거점 렌더 ──
-    const SH_R = 3;
-    const shGfxMap = {};
-
-    function renderStrongholds(shData) {
-      if (!shData || shData.length === 0) return;
-      const now = Date.now();
-      shData.forEach(sh => {
-        const cx = (sh.x + 0.5) * TILE_SIZE;
-        const cy = (sh.y + 0.5) * TILE_SIZE;
-        // null owner → 회색, 팀 owner → 팀 색
-        const color = sh.owner ? TEAM_COLORS[sh.owner] : 0xAAAAAA;
-        const alpha = sh.owner ? 0.7 : 0.45;
-        // 중립일 때 천천히 맥박 효과 (0.3~0.6)
-        const pulse = sh.owner ? 1 : 0.45 + 0.15 * Math.sin(now / 600);
-
-        if (!shGfxMap[sh.id]) {
-          const ring = new PIXI.Graphics();
-          const core = new PIXI.Graphics();
-          const label = new PIXI.Text('⚑', {
-            fontFamily:'Nunito', fontSize:20, fontWeight:'900',
-            fill: 0xFFFFFF, stroke: 0x000000, strokeThickness: 3,
-          });
-          label.anchor.set(0.5);
-          shLayer.addChild(ring, core, label);
-          shGfxMap[sh.id] = { ring, core, label };
-        }
-
-        const { ring, core, label } = shGfxMap[sh.id];
-
-        // 외곽 링 — 점령 반경
-        ring.clear();
-        ring.lineStyle(2.5, color, 0.6);
-        ring.drawCircle(cx, cy, SH_R * TILE_SIZE);
-
-        // 중심 코어
-        core.clear();
-        core.beginFill(color, alpha * pulse);
-        core.drawCircle(cx, cy, TILE_SIZE * 1.1);
-        core.endFill();
-        core.beginFill(0xFFFFFF, sh.owner ? 0.4 : 0.2 * pulse);
-        core.drawCircle(cx, cy, TILE_SIZE * 0.45);
-        core.endFill();
-
-        label.x = cx;
-        label.y = cy;
-        label.alpha = sh.owner ? 1 : 0.6;
-      });
-    }
-    renderStrongholds(strongholdsRef.current); // 초기 렌더 (거점 위치 즉시 표시)
 
     const socket=io(SERVER_URL,{
       transports:['websocket'],
@@ -465,12 +342,14 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     });
 
     // init — 고스트 방지: GFX 전체 교체
-    socket.on('init',({id,tiles,players,invincibleMs,round,roundTimeLeft,strongholds:initSh})=>{
+    socket.on('init',({id,tiles,players,invincibleMs,round})=>{
       s.myId=id;
       if(tiles)s.tiles=tiles;
+      // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
         const e=playerGfxMap.current[pid]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[pid];
       });
+      // 총알 GFX도 전부 정리
       Object.keys(bulletGfxMap.current).forEach(bid=>{
         const sp=bulletGfxMap.current[bid]; if(sp.parent)sp.parent.removeChild(sp); sp.destroy(); delete bulletGfxMap.current[bid];
       });
@@ -480,8 +359,6 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       buildTiles(tileLayer,s.tiles); calcScores(s.tiles);
       setPlayerCount(Object.keys(s.players).length);
       if(round)setRoundNumber(round);
-      if(roundTimeLeft!=null)setRoundTimeLeft(roundTimeLeft);
-      if(initSh){ strongholdsRef.current=initSh; setStrongholds(initSh); }
     });
 
     // player_join — 고스트 방지: 중복 GFX 제거 후 재등록
@@ -516,13 +393,10 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     // 서버 강제 위치 보정 (텔레포트 감지 시)
     socket.on('force_position',({x,y})=>{const me=s.players[s.myId];if(me){me.x=x;me.y=y;me.tx=x;me.ty=y;}});
     // 개인 순위표
-    socket.on('leaderboard',({leaderboard,teamTiles,teamBuffs:tb})=>{
+    socket.on('leaderboard',({leaderboard,teamTiles})=>{
       setLeaderboard(leaderboard);
       if(teamTiles) setScores({red:teamTiles.red??0,blue:teamTiles.blue??0,green:teamTiles.green??0});
-      if(tb) setTeamBuffs(tb);
     });
-    // 거점 상태 갱신
-    socket.on('strongholds',(data)=>{ strongholdsRef.current=data; setStrongholds(data); });
     socket.on('chat',({id,name,team,text})=>{
       const color=TEAM_CSS[team]??'#999';
       setChatMsgs(msgs=>[...msgs.slice(-49),{id:Date.now()+Math.random(),name,color,text}]);
@@ -538,18 +412,6 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     let pingT=0;
     const pingIv=setInterval(()=>{pingT=Date.now();socket.emit('ping_c');},2000);
     socket.on('pong_c',()=>setPing(Date.now()-pingT));
-
-    // 라운드 타이머 동기화
-    socket.on('round_tick',({timeLeft})=>setRoundTimeLeft(timeLeft));
-
-    // 맵 초기화
-    socket.on('map_reset',({tiles:newTiles})=>{
-      if(newTiles){
-        s.tiles=newTiles;
-        buildTiles(tileLayer,s.tiles);
-        calcScores(s.tiles);
-      }
-    });
 
     // 라운드 결과 수신
     socket.on('round_result',(result)=>{
@@ -607,14 +469,15 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       if(me){
         let dx=0,dy=0;
         if(!mobile){if(s.keys['KeyW']||s.keys['ArrowUp'])dy-=MOVE_SPEED;if(s.keys['KeyS']||s.keys['ArrowDown'])dy+=MOVE_SPEED;if(s.keys['KeyA']||s.keys['ArrowLeft'])dx-=MOVE_SPEED;if(s.keys['KeyD']||s.keys['ArrowRight'])dx+=MOVE_SPEED;}
-        else if(!mobileChatOpenRef.current){const mv=moveVec.current;if(mv.active){dx=mv.x*MOVE_SPEED;dy=mv.y*MOVE_SPEED;}}
+        else{const mv=moveVec.current;if(mv.active){dx=mv.x*MOVE_SPEED;dy=mv.y*MOVE_SPEED;}}
         if(dx&&dy){dx*=0.707;dy*=0.707;}
         me.x=Math.max(PLAYER_RADIUS,Math.min(GRID_W*TILE_SIZE-PLAYER_RADIUS,me.x+dx));
         me.y=Math.max(PLAYER_RADIUS,Math.min(GRID_H*TILE_SIZE-PLAYER_RADIUS,me.y+dy));
         me.tx=me.x; me.ty=me.y;
         if(connected&&(dx||dy)){
           socket.emit('move',{x:me.x,y:me.y});
-          // paint_tile은 서버의 move 핸들러에서 직접 처리하므로 별도 emit 불필요
+          const tx=Math.floor(me.x/TILE_SIZE),ty=Math.floor(me.y/TILE_SIZE);
+          if(s.tiles[ty]?.[tx]!==me.team)socket.emit('paint_tile',{x:tx,y:ty});
         }
 
         // 장전 진행률 — DOM 직접 조작 (React state 없이 60fps 완전 부드럽게)
@@ -641,7 +504,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         // 발사 (연결됨 + 장전 완료 + 무적 해제 시에만)
         let shoot=false,sdx=0,sdy=0;
         if(!mobile&&s.mouseDown){const mwx=s.mousePos.x+s.camX,mwy=s.mousePos.y+s.camY;const len=Math.hypot(mwx-me.x,mwy-me.y)||1;sdx=((mwx-me.x)/len)*BULLET_SPEED;sdy=((mwy-me.y)/len)*BULLET_SPEED;shoot=true;}
-        else if(mobile&&!mobileChatOpenRef.current){const sv=shootVec.current;if(sv.active){const mag=Math.hypot(sv.x,sv.y);if(mag>0.1){const len=mag||1;sdx=(sv.x/len)*BULLET_SPEED;sdy=(sv.y/len)*BULLET_SPEED;shoot=true;}}}
+        else if(mobile){const sv=shootVec.current;if(sv.active){const mag=Math.hypot(sv.x,sv.y);if(mag>0.1){const len=mag||1;sdx=(sv.x/len)*BULLET_SPEED;sdy=(sv.y/len)*BULLET_SPEED;shoot=true;}}}
         if(connected&&shoot&&ready&&!invincible){s.lastShot=now;socket.emit('move',{x:me.x,y:me.y});socket.emit('shoot',{dx:sdx,dy:sdy});}
 
         s.camX=lerp(s.camX,me.x-app.screen.width/2,0.1);
@@ -650,8 +513,8 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
 
       s.camX=Math.max(0,Math.min(GRID_W*TILE_SIZE-app.screen.width,s.camX));
       s.camY=Math.max(0,Math.min(GRID_H*TILE_SIZE-app.screen.height,s.camY));
-      tileLayer.x=playerLayer.x=bulletLayer.x=shLayer.x=-s.camX;
-      tileLayer.y=playerLayer.y=bulletLayer.y=shLayer.y=-s.camY;
+      tileLayer.x=playerLayer.x=bulletLayer.x=-s.camX;
+      tileLayer.y=playerLayer.y=bulletLayer.y=-s.camY;
 
       Object.entries(s.players).forEach(([id,p])=>{if(id!==s.myId){p.x=lerp(p.x??p.tx,p.tx,0.18);p.y=lerp(p.y??p.ty,p.ty,0.18);}});
       // [FIX] 총알 위치를 spawnTime 기준 경과 시간으로 직접 계산
@@ -669,8 +532,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       if(rebuildFlag.current)buildTiles(tileLayer,s.tiles);
       renderPlayers(app,playerLayer,s.players,s.myId,now);
       renderBullets(app,bulletLayer,s.bullets);
-      // 거점 렌더 — ref로 항상 최신 데이터 접근 (타이밍 문제 없음)
-      renderStrongholds(strongholdsRef.current);
     });
 
     cv.addEventListener('webglcontextlost',e=>{e.preventDefault();},false);
@@ -699,19 +560,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const gp=(scores.green/total*100).toFixed(1);
   const tc=tcRef.current;
 
-  // 라운드 타이머 포맷 (mm:ss)
-  const timerSec = Math.ceil(roundTimeLeft / 1000);
-  const timerMin = Math.floor(timerSec / 60);
-  const timerS   = timerSec % 60;
-  const timerStr = `${timerMin}:${String(timerS).padStart(2,'0')}`;
-  const timerUrgent = timerSec <= 30;
-
-  // 내 팀 버프 여부
-  const myBuff = teamBuffs[playerTeam] ?? false;
-
-  // 거점 소유 팀 색 (없으면 회색)
-  const shOwnerColor = (owner) => owner ? TEAM_CSS[owner] : '#CCCCCC';
-
   // 팀 메달
   const MEDAL=['🥇','🥈','🥉'];
 
@@ -720,23 +568,9 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       <div className="hud">
         <div className="hud-logo"><div className="hud-logo-circle"/><span style={{color:'#555',fontWeight:900}}>colorize</span><span style={{color:'#999',fontSize:'0.8em'}}>.io</span></div>
         <div className="score-bar"><div className="score-seg" style={{width:`${rp}%`,background:TEAM_CSS.red}}/><div className="score-seg" style={{width:`${bp}%`,background:TEAM_CSS.blue}}/><div className="score-seg" style={{width:`${gp}%`,background:TEAM_CSS.green}}/></div>
-        <div className="hud-scores">{['red','blue','green'].map(tm=><div className="hud-score" key={tm}><div className="hud-dot" style={{background:TEAM_CSS[tm]}}/>{scores[tm]}{teamBuffs[tm]&&<span className="hud-buff">⚡</span>}</div>)}</div>
-
-        {/* 거점 현황 */}
-        <div className="hud-strongholds">
-          {strongholds.map(sh=>(
-            <div key={sh.id} className="hud-sh-dot" style={{background: shOwnerColor(sh.owner), boxShadow: sh.owner ? `0 0 6px ${shOwnerColor(sh.owner)}88` : 'none'}} title={sh.owner ? `${sh.owner} 점령` : '중립'}/>
-          ))}
-        </div>
-
-        <div className="hud-timer" style={{color: timerUrgent ? '#E24B4A' : 'inherit', fontWeight: timerUrgent ? 700 : 500}}>
-          ⏱ {timerStr}
-        </div>
+        <div className="hud-scores">{['red','blue','green'].map(tm=><div className="hud-score" key={tm}><div className="hud-dot" style={{background:TEAM_CSS[tm]}}/>{scores[tm]}</div>)}</div>
         <div className="hud-right">
-          <div className="hud-player">
-            <span>{playerName}</span> · {t.team_names[playerTeam]}
-            {myBuff && <span className="hud-buff-badge">⚡ 버프</span>}
-          </div>
+          <div className="hud-player"><span>{playerName}</span> · {t.team_names[playerTeam]}</div>
           <div className="player-count">👥 {playerCount}</div>
           <button className="hud-settings-btn" onClick={()=>setShowSettings(true)}>⚙️</button>
         </div>
@@ -784,15 +618,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
           <>
             <div className="joystick-area left" ref={leftJoyRef}><div className="joystick-base"><div className="joystick-stick"/></div><div className="joystick-label">{t.joystick_move}</div></div>
             <div className="joystick-area right" ref={rightJoyRef}><div className="joystick-base"><div className="joystick-stick"/></div><div className="joystick-label">{t.joystick_shoot}</div></div>
-            <MobileChat
-              lang={lang}
-              msgs={chatMsgs}
-              input={chatInput}
-              setInput={setChatInput}
-              onSend={()=>{const text=chatInput.trim();if(!text||!socketRef.current)return;socketRef.current.emit('chat',{text});setChatInput('');}}
-              open={mobileChatOpen}
-              setOpen={_setMobileChatOpen}
-            />
           </>
         )}
       </div>
@@ -801,12 +626,12 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       {roundResult&&(
         <div className="round-overlay">
           <div className="round-card">
-            <div className="round-card-title">Round {roundResult.round}</div>
+            <div className="round-card-title">Round {roundResult.round} 결과</div>
             <div className="round-card-round">🏁</div>
 
             {/* 팀 순위 */}
             <div>
-              <div className="round-section-label">{{'en':'Team Rankings','ko':'팀 순위','ja':'チーム順位','zh':'队伍排名'}[lang]??'Team Rankings'}</div>
+              <div className="round-section-label">팀 순위 (누적 타일)</div>
               <div className="round-team-ranks">
                 {roundResult.teamRanks.map((tr,i)=>(
                   <div key={tr.team} className="round-team-item" style={{background:TEAM_CSS[tr.team]+'22',outline:`2px solid ${TEAM_CSS[tr.team]}44`}}>
@@ -820,20 +645,17 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
 
             {/* 개인 순위 */}
             <div>
-              <div className="round-section-label">{{'en':'Individual Tiles','ko':'개인 획득 타일','ja':'個人獲得タイル','zh':'个人获得格子'}[lang]??'Individual Tiles'}</div>
+              <div className="round-section-label">이번 라운드 개인 획득 타일</div>
               <div className="round-player-ranks">
                 {roundResult.playerRanks.length===0
-                  ?<div style={{textAlign:'center',color:'var(--muted)',fontSize:'0.8rem',padding:'8px'}}>{{'en':'No players','ko':'플레이어 없음','ja':'プレイヤーなし','zh':'没有玩家'}[lang]}</div>
+                  ?<div style={{textAlign:'center',color:'var(--muted)',fontSize:'0.8rem',padding:'8px'}}>플레이어 없음</div>
                   :roundResult.playerRanks.map((pr,i)=>{
                     const isMe=socketRef.current&&pr.id===socketRef.current.id;
                     return(
                       <div key={pr.id} className={`round-player-item${isMe?' is-me':''}`}>
                         <div className="round-player-rank-num">{i+1}</div>
                         <div className="round-player-dot" style={{background:TEAM_CSS[pr.team]??'#999'}}/>
-                        <div className="round-player-name">
-                          {pr.name}{isMe?' (나)':''}
-                          {pr.lateJoin&&<span style={{fontSize:'0.7em',opacity:0.6,marginLeft:4}}>{{'en':'late','ko':'후반','ja':'途中','zh':'中途'}[lang]}</span>}
-                        </div>
+                        <div className="round-player-name">{pr.name}{isMe?' (나)':''}</div>
                         <div className="round-player-gained">+{pr.gained} tiles</div>
                       </div>
                     );
@@ -842,9 +664,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
               </div>
             </div>
 
-            <div className="round-countdown">
-              {{'en':'Map resets in','ko':'맵이','ja':'マップが','zh':'地图将在'}[lang]} {resultCountdown}{{'en':'s','ko':'초 후 초기화','ja':'秒後にリセット','zh':'秒后重置'}[lang]}
-            </div>
+            <div className="round-countdown">{resultCountdown}초 후 자동으로 닫힘</div>
           </div>
         </div>
       )}
