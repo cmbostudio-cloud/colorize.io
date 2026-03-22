@@ -453,19 +453,15 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       s.players[p.id]={...p,tx:p.x,ty:p.y};
       minimapPlayersRef.current=s.players;
       setPlayerCount(Object.keys(s.players).length);
-      addFeed(LANGS[langRef.current].join_msg(p.name));
     });
 
-    // player_leave — GFX 명시적 제거
     socket.on('player_leave',({id})=>{
-      const name=s.players[id]?.name;
       if(playerGfxMap.current[id]){
         const e=playerGfxMap.current[id]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[id];
       }
       delete s.players[id];
       minimapPlayersRef.current=s.players;
       setPlayerCount(Object.keys(s.players).length);
-      if(name)addFeed(LANGS[langRef.current].leave_msg(name));
     });
 
     socket.on('player_move',({id,x,y,invincibleUntil})=>{if(s.players[id]){s.players[id].tx=x;s.players[id].ty=y;if(invincibleUntil!==undefined)s.players[id].invincibleUntil=invincibleUntil;minimapPlayersRef.current=s.players;}});
