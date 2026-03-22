@@ -332,17 +332,29 @@ function tileAt(x, y) {
   return tiles[y][x];
 }
 
+// ── 사망 시 타일 손실 (피격 플레이어 개인 타일만) ────────
+// personalTileSets: Map<socketId, Set<"x,y">>
+const personalTileSets = new Map();
+
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
   if (tiles[ty][tx] === team) return;
 
-  // 이전 소유자의 personalTileSet에서 제거
   const key = `${tx},${ty}`;
-  personalTileSets.forEach((set) => set.delete(key));
+
+  // 이전 소유자의 Set에서 제거하고 카운터도 감소
+  personalTileSets.forEach((set, sid) => {
+    if (set.has(key)) {
+      set.delete(key);
+      if (players[sid]) {
+        players[sid].personalTiles = Math.max(0, (players[sid].personalTiles ?? 0) - 1);
+      }
+    }
+  });
 
   tiles[ty][tx] = team;
 
-  // 새 소유자의 personalTileSet에 추가
+  // 새 소유자의 Set에 추가하고 카운터 증가
   if (ownerId && players[ownerId] && team) {
     if (!personalTileSets.has(ownerId)) personalTileSets.set(ownerId, new Set());
     personalTileSets.get(ownerId).add(key);
@@ -351,16 +363,6 @@ function paintTile(tx, ty, team, ownerId) {
 
   io.emit('tile_paint', { x: tx, y: ty, team });
 }
-
-function getScores() {
-  const s = { red: 0, blue: 0, green: 0 };
-  tiles.forEach(row => row.forEach(t => { if (t) s[t]++; }));
-  return s;
-}
-
-// ── 사망 시 타일 손실 (피격 플레이어 개인 타일만) ────────
-// personalTileSets: Map<socketId, Set<"x,y">>
-const personalTileSets = new Map();
 
 function loseTiles(killedSocketId) {
   const ownedSet = personalTileSets.get(killedSocketId);
@@ -380,6 +382,10 @@ function loseTiles(killedSocketId) {
   owned.slice(0, loss).forEach(({ x, y }) => {
     tiles[y][x] = null;
     ownedSet.delete(`${x},${y}`);
+    // 카운터도 감소
+    if (players[killedSocketId]) {
+      players[killedSocketId].personalTiles = Math.max(0, (players[killedSocketId].personalTiles ?? 0) - 1);
+    }
     io.emit('tile_paint', { x, y, team: null });
   });
 }
@@ -568,6 +574,7 @@ io.on('connection', (socket) => {
 
     const assignedTeam = TEAMS.includes(team) ? team : 'blue';
     const isReconnect  = !!players[socket.id];
+    const prevPersonalTiles = isReconnect ? (players[socket.id].personalTiles ?? 0) : 0;
 
     // 재연결 시 위치 유지, 신규 접속만 스폰 위치 지정
     let spawnX, spawnY;
@@ -587,7 +594,7 @@ io.on('connection', (socket) => {
       y:               spawnY,
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
-      personalTiles:   isReconnect ? (players[socket.id]?.personalTiles ?? 0) : 0,
+      personalTiles:   prevPersonalTiles,
     };
 
     socket.emit('init', {
