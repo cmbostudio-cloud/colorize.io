@@ -201,6 +201,17 @@ const CTRL_STRIP_RE      = /[\x00-\x1F\x7F]/g;
 
 const TEAMS = ['red', 'blue', 'green'];
 
+// ── 팀 자동 배정: 인원이 가장 적은 팀 반환 ──────────────
+function getBalancedTeam(preferredTeam) {
+  const counts = { red: 0, blue: 0, green: 0 };
+  Object.values(players).forEach(p => { counts[p.team]++; });
+  const minCount = Math.min(...Object.values(counts));
+  // 선호 팀이 최소 인원이면 그대로, 아니면 최소 인원 팀 중 랜덤
+  if (counts[preferredTeam] === minCount) return preferredTeam;
+  const candidates = TEAMS.filter(t => counts[t] === minCount);
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
 // ── 보안 상태 ────────────────────────────────────────
 // IP별 접속 수 추적
 const ipConnections = new Map(); // ip → Set<socketId>
@@ -313,13 +324,20 @@ function getRoundTimeLeft() {
   return Math.max(0, ROUND_MS - (Date.now() - roundStartTime));
 }
 
-// 라운드 종료: 집계 → 브로드캐스트 → 개인 스탯 초기화
+// 라운드 종료: 집계 → 브로드캐스트 → 맵 초기화 → 개인 스탯 초기화
 function endRound() {
   const teamScores = getScores();
 
   // 개인 순위: 이번 라운드 획득 타일 수 기준
+  // 후반 합류자(라운드 시작 후 60초 이상 지나서 접속) 표시
   const playerRanks = Object.values(players)
-    .map(p => ({ id: p.id, name: p.name, team: p.team, gained: p.roundGained ?? 0 }))
+    .map(p => ({
+      id:        p.id,
+      name:      p.name,
+      team:      p.team,
+      gained:    p.roundGained ?? 0,
+      lateJoin:  p.joinedAt && (p.joinedAt - roundStartTime) > 60000,
+    }))
     .sort((a, b) => b.gained - a.gained);
 
   // 팀 순위
@@ -328,13 +346,20 @@ function endRound() {
     .sort((a, b) => b.tiles - a.tiles);
 
   io.emit('round_result', {
-    round:      roundNumber,
+    round: roundNumber,
     teamRanks,
     playerRanks,
   });
 
-  // 개인 라운드 스탯 초기화
-  Object.values(players).forEach(p => { p.roundGained = 0; });
+  // 맵 초기화
+  tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
+  io.emit('map_reset', { tiles });
+
+  // 개인 라운드 스탯 초기화 + joinedAt 갱신
+  Object.values(players).forEach(p => {
+    p.roundGained = 0;
+    p.joinedAt    = Date.now();
+  });
 
   roundNumber++;
   roundStartTime = Date.now();
@@ -342,6 +367,11 @@ function endRound() {
 
 // 3분마다 라운드 종료
 setInterval(endRound, ROUND_MS);
+
+// 1초마다 라운드 남은 시간 브로드캐스트
+setInterval(() => {
+  io.emit('round_tick', { timeLeft: getRoundTimeLeft() });
+}, 1000);
 
 // 30초마다 자동 저장
 setInterval(saveTiles, SAVE_INTERVAL);
@@ -354,15 +384,34 @@ process.on('SIGTERM', () => { saveTiles(); process.exit(0); });
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
 function spawnPosition(team) {
-  const spawns = {
-    red:   { x: TILE_SIZE * 3,            y: TILE_SIZE * 3 },
-    blue:  { x: TILE_SIZE * (GRID_W - 3), y: TILE_SIZE * 3 },
-    green: { x: TILE_SIZE * (GRID_W / 2), y: TILE_SIZE * (GRID_H - 3) },
-  };
-  const s = spawns[team];
+  // 아군 타일이 있으면 해당 타일 중 무작위 위치 인근에 스폰
+  const teamTiles = [];
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (tiles[y][x] === team) teamTiles.push({ x, y });
+    }
+  }
+
+  let baseX, baseY;
+  if (teamTiles.length > 0) {
+    // 아군 타일 중 랜덤 선택
+    const pick = teamTiles[Math.floor(Math.random() * teamTiles.length)];
+    baseX = (pick.x + 0.5) * TILE_SIZE;
+    baseY = (pick.y + 0.5) * TILE_SIZE;
+  } else {
+    // 아군 타일이 0개면 초기 스폰 지점으로 폴백
+    const fallback = {
+      red:   { x: TILE_SIZE * 3,            y: TILE_SIZE * 3 },
+      blue:  { x: TILE_SIZE * (GRID_W - 3), y: TILE_SIZE * 3 },
+      green: { x: TILE_SIZE * (GRID_W / 2), y: TILE_SIZE * (GRID_H - 3) },
+    };
+    baseX = fallback[team].x;
+    baseY = fallback[team].y;
+  }
+
   return {
-    x: clamp(s.x + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_W * TILE_SIZE - PLAYER_RADIUS),
-    y: clamp(s.y + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_H * TILE_SIZE - PLAYER_RADIUS),
+    x: clamp(baseX + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_W * TILE_SIZE - PLAYER_RADIUS),
+    y: clamp(baseY + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_H * TILE_SIZE - PLAYER_RADIUS),
   };
 }
 
@@ -389,23 +438,24 @@ function getScores() {
   return s;
 }
 
-// ── 사망 시 타일 손실 ────────────────────────────────────
-function loseTiles(team) {
-  // 해당 팀 타일 좌표 수집
+// ── 사망 시 타일 손실 (팀 전체 → 피격 플레이어 주변 개인 타일만) ──
+// 죽은 플레이어의 마지막 위치 주변 타일 우선 제거 → 팀 전체 피해 방지
+function loseTiles(team, deadX, deadY) {
   const owned = [];
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
-      if (tiles[y][x] === team) owned.push({ x, y });
+      if (tiles[y][x] === team) {
+        const dist = Math.hypot(x - Math.floor(deadX / TILE_SIZE), y - Math.floor(deadY / TILE_SIZE));
+        owned.push({ x, y, dist });
+      }
     }
   }
   if (owned.length === 0) return;
 
+  // 가까운 타일 우선 정렬 후 손실 계산
+  owned.sort((a, b) => a.dist - b.dist);
   const loss = clamp(Math.round(owned.length * TILE_LOSS_RATIO), TILE_LOSS_MIN, TILE_LOSS_MAX);
-  // Fisher-Yates 셔플 후 앞 loss개 제거
-  for (let i = owned.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [owned[i], owned[j]] = [owned[j], owned[i]];
-  }
+
   owned.slice(0, loss).forEach(({ x, y }) => {
     tiles[y][x] = null;
     io.emit('tile_paint', { x, y, team: null });
@@ -425,12 +475,14 @@ function checkBulletCollisions() {
       return;
     }
 
-    // 레이캐스팅: 이전 위치 → 현재 위치 경로의 타일 칠하기
+    // 레이캐스팅: 이전 위치 → 현재 위치 경로의 타일 칠하기 (아군 타일은 보호)
     const prevX = b.prevX ?? b.x;
     const prevY = b.prevY ?? b.y;
     const tilesOnPath = getTilesOnSegment(prevX, prevY, b.x, b.y);
     tilesOnPath.forEach(({ tx, ty }) => {
-      if (tileAt(tx, ty) !== undefined) paintTile(tx, ty, b.team, b.owner);
+      if (tileAt(tx, ty) !== undefined && tileAt(tx, ty) !== b.team) {
+        paintTile(tx, ty, b.team, b.owner);
+      }
     });
 
     // 플레이어 충돌 (다른 팀, 무적 제외)
@@ -442,8 +494,8 @@ function checkBulletCollisions() {
       if (p.invincibleUntil && Date.now() < p.invincibleUntil) return;
       const dist = Math.hypot(p.x - b.x, p.y - b.y);
       if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
-        // 타일 손실 적용
-        loseTiles(p.team);
+        // 타일 손실 적용 (죽은 플레이어 위치 기준)
+        loseTiles(p.team, p.x, p.y);
         const spawn = spawnPosition(p.team);
         p.x = spawn.x; p.y = spawn.y;
         // 리스폰 시 무적 부여
@@ -597,7 +649,7 @@ io.on('connection', (socket) => {
     if (!isSafeStr(name ?? '', 32)) { addViolation(socket, 'join: invalid name'); return; }
     if (!isSafeStr(team ?? '', 10)) { addViolation(socket, 'join: invalid team'); return; }
 
-    const assignedTeam = TEAMS.includes(team) ? team : 'blue';
+    const assignedTeam = getBalancedTeam(TEAMS.includes(team) ? team : 'blue');
     const isReconnect  = !!players[socket.id];
 
     // 재연결 시 위치·라운드 점수 유지, 신규 접속만 스폰 위치 지정
@@ -620,6 +672,7 @@ io.on('connection', (socket) => {
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
       roundGained:     prevGained,
+      joinedAt:        isReconnect ? players[socket.id]?.joinedAt : Date.now(),
     };
 
     socket.emit('init', {
