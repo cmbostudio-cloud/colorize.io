@@ -218,7 +218,6 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
 
   // 라운드
   const[roundPhase,setRoundPhase]=useState('playing'); // 'playing'|'break'
-  const[roundNum,setRoundNum]=useState(1);
   const[roundEnd,setRoundEnd]=useState(null); // { winner, teamTiles, results, breakMs }
   const roundEndsAtRef=useRef(Date.now()+600000);
 
@@ -391,8 +390,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       const e=playerGfxMap.current[id];
       if(e.color!==color||e.isMe!==isMe){e.sprite.texture=getPlayerTex(app,color,isMe);e.color=color;e.isMe=isMe;}
       e.txt.text=p.name; e.c.x=p.x; e.c.y=p.y;
-      // 1위 왕관 표시
-      e.crown.visible = (id===topId);
+      e.crown.visible = false;
       // 무적 깜빡임
       const invLeft=p.invincibleUntil?p.invincibleUntil-now:0;
       if(invLeft>0){e.c.alpha=0.45+0.45*Math.abs(Math.sin(now/120));}
@@ -462,7 +460,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
         s.tiles=rawTiles;
       }
       minimapTilesRef.current=s.tiles;
-      if(round){roundEndsAtRef.current=round.endsAt;setRoundNum(round.num);setRoundPhase(round.phase);}
+      if(round){roundEndsAtRef.current=round.endsAt;setRoundPhase(round.phase);}
       if(initXp!=null){setXp(initXp);setLevel(initLevel??1);xpRef.current=initXp;levelRef.current=initLevel??1;}
       // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
@@ -516,23 +514,20 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       if(teamTiles) setScores({red:teamTiles.red??0,blue:teamTiles.blue??0,green:teamTiles.green??0});
       if(rd){
         if(rd.timeLeft!=null) roundEndsAtRef.current = Date.now() + rd.timeLeft;
-        setRoundNum(rd.num);
         setRoundPhase(rd.phase);
       }
     });
 
     // 라운드 종료
-    socket.on('round_end',({winner,teamTiles,results,breakMs,roundNum:rn})=>{
+    socket.on('round_end',({winner,teamTiles,results,breakMs})=>{
       setRoundPhase('break');
-      setRoundNum(rn);
       // breakEndsAt: 현재 시각 + 대기 시간 → 실시간 카운트다운용
       setRoundEnd({winner,teamTiles,results,breakEndsAt:Date.now()+(breakMs??15000)});
     });
 
     // 새 라운드 시작 — XP/레벨 초기화
-    socket.on('round_start',({roundNum:rn,endsAt})=>{
+    socket.on('round_start',({endsAt})=>{
       setRoundPhase('playing');
-      setRoundNum(rn);
       setRoundEnd(null);
       roundEndsAtRef.current=endsAt;
       setXp(0); setLevel(1); xpRef.current=0; levelRef.current=1;
@@ -755,7 +750,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         <div className="hud-logo"><div className="hud-logo-circle"/><div className="logo-text" style={{fontSize:'clamp(0.75rem,2vw,1rem)'}}><Logo/></div><span style={{color:'#999',fontSize:'0.75em',fontWeight:700}}>.io</span></div>
         {/* 타이머 */}
         <div className="hud-timer-wrap">
-          <div className="hud-round-num">R{roundNum}</div>
           <div className="hud-timer" ref={timerRef}>10:00</div>
         </div>
         <div className="score-bar"><div className="score-seg" style={{width:`${rp}%`,background:TEAM_CSS.red}}/><div className="score-seg" style={{width:`${bp}%`,background:TEAM_CSS.blue}}/><div className="score-seg" style={{width:`${gp}%`,background:TEAM_CSS.green}}/></div>
@@ -797,15 +791,8 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
             {leaderboard.slice(0,8).map((p,i)=>{
               const isMe=socketRef.current&&p.id===socketRef.current.id;
               return(
-                <div key={p.id} className="leaderboard-row" style={{position:'relative'}}>
-                  {i===0&&(
-                    <svg className="leaderboard-crown" viewBox="0 0 24 14" xmlns="http://www.w3.org/2000/svg" style={{position:'absolute',top:'-13px',left:'50%',transform:'translateX(-50%)',width:'18px',height:'11px',filter:'drop-shadow(0 1px 2px rgba(0,0,0,0.18))'}}>
-                      <polygon points="2,13 6,4 12,9 18,4 22,13" fill="#FFD700" stroke="#FFA500" strokeWidth="1" strokeLinejoin="round"/>
-                      <circle cx="2"  cy="13" r="1.5" fill="#FFD700" stroke="#FFA500" strokeWidth="0.8"/>
-                      <circle cx="12" cy="8.5" r="1.5" fill="#FFD700" stroke="#FFA500" strokeWidth="0.8"/>
-                      <circle cx="22" cy="13" r="1.5" fill="#FFD700" stroke="#FFA500" strokeWidth="0.8"/>
-                    </svg>
-                  )}
+                <div key={p.id} className="leaderboard-row">
+
                   <div className="leaderboard-rank">{['🥇','🥈','🥉'][i]??i+1}</div>
                   <div className="leaderboard-dot" style={{background:TEAM_CSS[p.team]??'#999'}}/>
                   <div className={`leaderboard-name${isMe?' is-me':''}`}>{p.name}</div>
@@ -825,8 +812,6 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         </div>
 
         <div className="overlay-hud"><div className="ping-badge">{t.ping} {ping}ms</div></div>
-
-        {!mobile&&<div className="controls-hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> {t.move_hint}&nbsp;·&nbsp;{t.shoot_hint}</div>}
 
         {!mobile&&(
           <ChatBox lang={lang} msgs={chatMsgs} input={chatInput} setInput={setChatInput}
