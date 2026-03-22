@@ -146,6 +146,7 @@ html, body, #root {
 .leaderboard { position:absolute; top:10px; right:12px; width:min(200px,38vw); background:rgba(255,255,255,0.92); backdrop-filter:blur(8px); border-radius:14px; padding:10px 12px; box-shadow:0 2px 16px rgba(0,0,0,0.10); z-index:5; pointer-events:none; }
 .leaderboard-title { font-size:0.62rem; font-weight:900; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:7px; }
 .leaderboard-row { display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px solid rgba(0,0,0,0.05); }
+.leaderboard-row:first-of-type { margin-top:10px; }
 .leaderboard-row:last-child { border-bottom:none; }
 .leaderboard-rank { font-size:0.65rem; font-weight:900; color:var(--muted); width:14px; text-align:center; flex-shrink:0; }
 .leaderboard-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
