@@ -336,6 +336,10 @@ function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
   if (tiles[ty][tx] === team) return;
   tiles[ty][tx] = team;
+  // 개인 기여 타일 수 누적
+  if (ownerId && players[ownerId]) {
+    players[ownerId].personalTiles = (players[ownerId].personalTiles ?? 0) + 1;
+  }
   io.emit('tile_paint', { x: tx, y: ty, team });
 }
 
@@ -491,10 +495,10 @@ setInterval(() => {
 
   const leaderboard = Object.values(players)
     .map(p => ({
-      id:   p.id,
-      name: p.name,
-      team: p.team,
-      tiles: teamTiles[p.team] ?? 0,
+      id:           p.id,
+      name:         p.name,
+      team:         p.team,
+      tiles:        p.personalTiles ?? 0,  // 개인 기여 타일 수
     }))
     .sort((a, b) => b.tiles - a.tiles);
 
@@ -571,6 +575,7 @@ io.on('connection', (socket) => {
       y:               spawnY,
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
+      personalTiles:   isReconnect ? (players[socket.id]?.personalTiles ?? 0) : 0,
     };
 
     socket.emit('init', {
