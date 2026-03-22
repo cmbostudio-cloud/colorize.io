@@ -177,7 +177,6 @@ const INVINCIBLE_MS     = 5000;  // 리스폰 후 무적 시간
 const TILE_LOSS_RATIO   = 0.15;  // 사망 시 타일 손실 비율
 const TILE_LOSS_MIN     = 3;     // 최소 손실 타일 수
 const TILE_LOSS_MAX     = 50;    // 최대 손실 타일 수
-const ROUND_MS          = 3 * 60 * 1000; // 3분 라운드
 
 // ── 보안 상수 ────────────────────────────────────────
 const MAX_CONNS_PER_IP   = 3;     // IP당 최대 동시 접속
@@ -305,44 +304,6 @@ let players = {};
 let bullets = {};
 let bulletIdCounter = 0;
 
-// ── 라운드 상태 ───────────────────────────────────────
-let roundStartTime = Date.now();
-let roundNumber    = 1;
-
-function getRoundTimeLeft() {
-  return Math.max(0, ROUND_MS - (Date.now() - roundStartTime));
-}
-
-// 라운드 종료: 집계 → 브로드캐스트 → 개인 스탯 초기화
-function endRound() {
-  const teamScores = getScores();
-
-  // 개인 순위: 이번 라운드 획득 타일 수 기준
-  const playerRanks = Object.values(players)
-    .map(p => ({ id: p.id, name: p.name, team: p.team, gained: p.roundGained ?? 0 }))
-    .sort((a, b) => b.gained - a.gained);
-
-  // 팀 순위
-  const teamRanks = [...TEAMS]
-    .map(t => ({ team: t, tiles: teamScores[t] }))
-    .sort((a, b) => b.tiles - a.tiles);
-
-  io.emit('round_result', {
-    round:      roundNumber,
-    teamRanks,
-    playerRanks,
-  });
-
-  // 개인 라운드 스탯 초기화
-  Object.values(players).forEach(p => { p.roundGained = 0; });
-
-  roundNumber++;
-  roundStartTime = Date.now();
-}
-
-// 3분마다 라운드 종료
-setInterval(endRound, ROUND_MS);
-
 // 30초마다 자동 저장
 setInterval(saveTiles, SAVE_INTERVAL);
 
@@ -371,16 +332,11 @@ function tileAt(x, y) {
   return tiles[y][x];
 }
 
-// [FIX-S1] paintTile: owner 옵션 파라미터로 개인 획득 타일 추적
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
   if (tiles[ty][tx] === team) return;
   tiles[ty][tx] = team;
   io.emit('tile_paint', { x: tx, y: ty, team });
-  // 개인 획득 타일 카운트 (중립→팀, 타팀→팀 모두 카운트)
-  if (ownerId && players[ownerId]) {
-    players[ownerId].roundGained = (players[ownerId].roundGained ?? 0) + 1;
-  }
 }
 
 function getScores() {
@@ -530,20 +486,17 @@ setInterval(() => {
 // ── 개인 순위표 브로드캐스트 (2초마다) ──────────────────
 setInterval(() => {
   if (Object.keys(players).length === 0) return;
-  // 팀별 타일 집계
-  const tileCount = {}; // playerId → count (이번 라운드 획득)
-  // 전체 타일에서 팀별 소유 타일 수
   const teamTiles = { red: 0, blue: 0, green: 0 };
   tiles.forEach(row => row.forEach(t => { if (t) teamTiles[t]++; }));
 
   const leaderboard = Object.values(players)
     .map(p => ({
-      id:     p.id,
-      name:   p.name,
-      team:   p.team,
-      gained: p.roundGained ?? 0,
+      id:   p.id,
+      name: p.name,
+      team: p.team,
+      tiles: teamTiles[p.team] ?? 0,
     }))
-    .sort((a, b) => b.gained - a.gained);
+    .sort((a, b) => b.tiles - a.tiles);
 
   io.emit('leaderboard', { leaderboard, teamTiles });
 }, 2000);
@@ -600,12 +553,11 @@ io.on('connection', (socket) => {
     const assignedTeam = TEAMS.includes(team) ? team : 'blue';
     const isReconnect  = !!players[socket.id];
 
-    // 재연결 시 위치·라운드 점수 유지, 신규 접속만 스폰 위치 지정
-    let spawnX, spawnY, prevGained = 0;
+    // 재연결 시 위치 유지, 신규 접속만 스폰 위치 지정
+    let spawnX, spawnY;
     if (isReconnect) {
-      spawnX      = players[socket.id].x;
-      spawnY      = players[socket.id].y;
-      prevGained  = players[socket.id].roundGained ?? 0;
+      spawnX = players[socket.id].x;
+      spawnY = players[socket.id].y;
     } else {
       const sp = spawnPosition(assignedTeam);
       spawnX = sp.x; spawnY = sp.y;
@@ -619,15 +571,12 @@ io.on('connection', (socket) => {
       y:               spawnY,
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
-      roundGained:     prevGained,
     };
 
     socket.emit('init', {
       id:            socket.id,
       tiles,
       invincibleMs:  INVINCIBLE_MS,
-      round:         roundNumber,
-      roundTimeLeft: getRoundTimeLeft(),
       players: Object.fromEntries(
         Object.entries(players).map(([id, p]) => [id, sanitizePlayer(p)])
       ),
