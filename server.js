@@ -6,11 +6,25 @@ const fs      = require('fs');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
-  cors: { origin: '*' },
+
+// Railway 리버스 프록시 신뢰 (IP 스푸핑 방지 — Railway는 1단계 프록시)
+app.set('trust proxy', 1);
+
+// 허용 오리진: 환경변수 우선, 없으면 Railway 기본 도메인
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://colorizeio-production.up.railway.app';
+
+const io = new Server(server, {
+  cors: {
+    origin: (origin, cb) => {
+      // origin이 없으면 같은 도메인 요청 (curl, 서버 내부) → 허용
+      if (!origin || origin === ALLOWED_ORIGIN) return cb(null, true);
+      cb(new Error(`CORS blocked: ${origin}`));
+    },
+    methods: ['GET', 'POST'],
+  },
   maxHttpBufferSize: 1e4,  // 패킷 최대 10KB
-  pingTimeout:  60000,     // 60초 (넉넉하게)
-  pingInterval: 25000,     // 25초마다 ping
+  pingTimeout:  60000,
+  pingInterval: 25000,
 });
 
 // ── IP 블랙리스트 ─────────────────────────────────────
@@ -26,9 +40,7 @@ const HTTP_RATE_MAX    = 300;        // 1분에 최대 300 요청
 const HTTP_RATE_BAN    = 60 * 1000; // 초과 시 1분 차단
 
 app.use((req, res, next) => {
-  const ip =
-    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-    req.socket.remoteAddress;
+  const ip = req.ip || req.socket.remoteAddress;
 
   // 블랙리스트 차단
   if (IP_BLACKLIST.has(ip)) {
@@ -213,7 +225,7 @@ const violations    = new Map(); // socketId → { count, decayTimer }
 
 // ── 보안 헬퍼 ────────────────────────────────────────
 
-// IP 추출 (프록시 환경 대응)
+// IP 추출 (trust proxy 1 설정으로 Railway가 주입한 x-forwarded-for 첫 번째 값만 신뢰)
 function getIp(socket) {
   return (
     socket.handshake.headers['x-forwarded-for']?.split(',')[0].trim() ||
@@ -234,7 +246,7 @@ function checkRate(socketId, key, limit) {
   return counters[key].count <= limit;
 }
 
-// 위반 처리 — 로그만 남기고 kick은 명시적 임계값 초과 시만
+// 위반 처리 — MAX_VIOLATIONS 초과 시 kick
 function addViolation(socket, reason) {
   const id = socket.id;
   if (!violations.has(id)) {
@@ -248,8 +260,11 @@ function addViolation(socket, reason) {
   const v = violations.get(id);
   v.count++;
   console.warn(`⚠️  위반 [${getIp(socket)}] ${reason} (누적 ${v.count})`);
-  // kick은 명백한 악성 패킷(join 전 이벤트, 비정상 페이로드)에만 적용
-  // rate limit 오탐으로 정상 유저가 kick되는 문제 방지
+  if (v.count >= MAX_VIOLATIONS) {
+    console.warn(`🚫 위반 한도 초과 kick: ${getIp(socket)}`);
+    socket.emit('kicked', { reason: 'Too many violations' });
+    socket.disconnect(true);
+  }
 }
 
 // 페이로드 타입 검증 유틸
