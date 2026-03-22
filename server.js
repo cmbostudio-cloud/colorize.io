@@ -335,11 +335,20 @@ function tileAt(x, y) {
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
   if (tiles[ty][tx] === team) return;
+
+  // 이전 소유자의 personalTileSet에서 제거
+  const key = `${tx},${ty}`;
+  personalTileSets.forEach((set) => set.delete(key));
+
   tiles[ty][tx] = team;
-  // 개인 기여 타일 수 누적
-  if (ownerId && players[ownerId]) {
+
+  // 새 소유자의 personalTileSet에 추가
+  if (ownerId && players[ownerId] && team) {
+    if (!personalTileSets.has(ownerId)) personalTileSets.set(ownerId, new Set());
+    personalTileSets.get(ownerId).add(key);
     players[ownerId].personalTiles = (players[ownerId].personalTiles ?? 0) + 1;
   }
+
   io.emit('tile_paint', { x: tx, y: ty, team });
 }
 
@@ -349,25 +358,28 @@ function getScores() {
   return s;
 }
 
-// ── 사망 시 타일 손실 ────────────────────────────────────
-function loseTiles(team) {
-  // 해당 팀 타일 좌표 수집
-  const owned = [];
-  for (let y = 0; y < GRID_H; y++) {
-    for (let x = 0; x < GRID_W; x++) {
-      if (tiles[y][x] === team) owned.push({ x, y });
-    }
-  }
+// ── 사망 시 타일 손실 (피격 플레이어 개인 타일만) ────────
+// personalTileSets: Map<socketId, Set<"x,y">>
+const personalTileSets = new Map();
+
+function loseTiles(killedSocketId) {
+  const ownedSet = personalTileSets.get(killedSocketId);
+  if (!ownedSet || ownedSet.size === 0) return;
+
+  const owned = [...ownedSet].map(key => {
+    const [x, y] = key.split(',').map(Number);
+    return { x, y };
+  });
   if (owned.length === 0) return;
 
   const loss = clamp(Math.round(owned.length * TILE_LOSS_RATIO), TILE_LOSS_MIN, TILE_LOSS_MAX);
-  // Fisher-Yates 셔플 후 앞 loss개 제거
   for (let i = owned.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [owned[i], owned[j]] = [owned[j], owned[i]];
   }
   owned.slice(0, loss).forEach(({ x, y }) => {
     tiles[y][x] = null;
+    ownedSet.delete(`${x},${y}`);
     io.emit('tile_paint', { x, y, team: null });
   });
 }
@@ -402,8 +414,8 @@ function checkBulletCollisions() {
       if (p.invincibleUntil && Date.now() < p.invincibleUntil) return;
       const dist = Math.hypot(p.x - b.x, p.y - b.y);
       if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
-        // 타일 손실 적용
-        loseTiles(p.team);
+        // 타일 손실 적용 (피격 플레이어 개인 타일만)
+        loseTiles(pid);
         const spawn = spawnPosition(p.team);
         p.x = spawn.x; p.y = spawn.y;
         // 리스폰 시 무적 부여
@@ -757,8 +769,9 @@ io.on('connection', (socket) => {
       if (ipSet2.size === 0) ipConnections.delete(ip);
     }
 
-    // rate limit / violation 정리
+    // rate limit / violation / personalTileSet 정리
     rateLimiters.delete(socket.id);
+    personalTileSets.delete(socket.id);
     const v = violations.get(socket.id);
     if (v) { clearInterval(v.decayTimer); violations.delete(socket.id); }
 
