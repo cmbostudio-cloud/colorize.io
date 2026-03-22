@@ -4,7 +4,7 @@
   "description": "daubs.io - 땅따먹기 게임",
   "main": "server.js",
   "scripts": {
-    "start": "npx vite build && node server.js"
+    "start": "npx vite build && node server.js",
     "dev": "node server.js",
     "build": "npx vite build",
     "preview": "vite preview"
