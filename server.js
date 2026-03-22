@@ -335,6 +335,41 @@ let players = {};
 let bullets = {};
 let bulletIdCounter = 0;
 
+// ── 타일 변경 배치 버퍼 ───────────────────────────────
+const tileBatch = [];
+let tileBatchFlushScheduled = false;
+
+function flushTileBatch() {
+  tileBatchFlushScheduled = false;
+  if (tileBatch.length === 0) return;
+  if (tileBatch.length === 1) {
+    io.emit('tile_paint', tileBatch[0]);
+  } else {
+    io.emit('tiles_batch', tileBatch.slice());
+  }
+  tileBatch.length = 0;
+}
+
+function paintTile(tx, ty, team, ownerId) {
+  if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
+  if (tiles[ty][tx] === team) return;
+  tiles[ty][tx] = team;
+  tileBatch.push({ x: tx, y: ty, team });
+  if (!tileBatchFlushScheduled) {
+    tileBatchFlushScheduled = true;
+    setImmediate(flushTileBatch);
+  }
+  if (ownerId && players[ownerId]) {
+    players[ownerId].roundGained = (players[ownerId].roundGained ?? 0) + 1;
+  }
+}
+
+function getScores() {
+  const s = { red: 0, blue: 0, green: 0 };
+  tiles.forEach(row => row.forEach(t => { if (t) s[t]++; }));
+  return s;
+}
+
 // ── 거점 상태 ─────────────────────────────────────────
 // { id, x, y, owner: 'red'|'blue'|'green'|null, progress: {red,blue,green} }
 let strongholds = STRONGHOLD_POSITIONS.map(s => ({ ...s, owner: null }));
@@ -556,41 +591,6 @@ function spawnPosition(team) {
 function tileAt(x, y) {
   if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) return undefined;
   return tiles[y][x];
-}
-
-// ── 타일 변경 배치 버퍼 (틱당 한 번에 emit) ──────────────
-const tileBatch = [];
-let tileBatchFlushScheduled = false;
-
-function flushTileBatch() {
-  tileBatchFlushScheduled = false;
-  if (tileBatch.length === 0) return;
-  if (tileBatch.length === 1) {
-    io.emit('tile_paint', tileBatch[0]);
-  } else {
-    io.emit('tiles_batch', tileBatch.slice());
-  }
-  tileBatch.length = 0;
-}
-
-function paintTile(tx, ty, team, ownerId) {
-  if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
-  if (tiles[ty][tx] === team) return;
-  tiles[ty][tx] = team;
-  tileBatch.push({ x: tx, y: ty, team });
-  if (!tileBatchFlushScheduled) {
-    tileBatchFlushScheduled = true;
-    setImmediate(flushTileBatch);
-  }
-  if (ownerId && players[ownerId]) {
-    players[ownerId].roundGained = (players[ownerId].roundGained ?? 0) + 1;
-  }
-}
-
-function getScores() {
-  const s = { red: 0, blue: 0, green: 0 };
-  tiles.forEach(row => row.forEach(t => { if (t) s[t]++; }));
-  return s;
 }
 
 // ── 사망 시 타일 손실 (팀 전체 → 피격 플레이어 주변 개인 타일만) ──
