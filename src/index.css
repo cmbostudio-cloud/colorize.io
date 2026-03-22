@@ -161,3 +161,37 @@ html, body, #root {
 .minimap-wrap.expanded { border-radius:14px; box-shadow:0 4px 24px rgba(0,0,0,0.28); }
 .minimap-canvas { display:block; }
 .minimap-icon { position:absolute; bottom:4px; right:5px; font-size:0.65rem; color:rgba(255,255,255,0.8); font-weight:900; line-height:1; pointer-events:none; text-shadow:0 1px 3px rgba(0,0,0,0.5); }
+
+/* ══ TIMER ══ */
+.hud-timer-wrap { display:flex; flex-direction:column; align-items:center; flex-shrink:0; line-height:1; }
+.hud-round-num { font-size:0.55rem; font-weight:900; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; }
+.hud-timer { font-size:clamp(0.85rem,2.2vw,1.05rem); font-weight:900; letter-spacing:0.04em; color:var(--text); font-variant-numeric:tabular-nums; }
+
+/* ══ LEVEL / XP ══ */
+.hud-level-wrap { display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0; }
+.hud-level { font-size:0.65rem; font-weight:900; color:var(--text); letter-spacing:0.02em; }
+.hud-xp-track { width:44px; height:4px; border-radius:3px; background:#ECECEC; overflow:hidden; }
+.hud-xp-fill { height:100%; border-radius:3px; transition:width 0.3s ease; }
+
+/* ══ ROUND END OVERLAY ══ */
+.round-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:50; backdrop-filter:blur(6px); animation:fadeIn 0.25s ease; }
+.round-result-card { background:var(--card); border-radius:24px; padding:28px 32px; box-shadow:0 8px 40px rgba(0,0,0,0.22); width:min(360px,90vw); display:flex; flex-direction:column; gap:16px; }
+.round-result-badge { border-radius:12px; padding:10px 18px; color:#fff; font-size:1.3rem; font-weight:900; text-align:center; letter-spacing:0.04em; }
+.round-result-scores { display:flex; flex-direction:column; gap:6px; }
+.round-score-row { display:flex; align-items:center; gap:8px; font-size:0.85rem; font-weight:700; color:var(--muted); padding:4px 0; }
+.round-score-row.winner { color:var(--text); font-weight:900; }
+.round-score-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.round-score-val { margin-left:auto; font-weight:900; font-size:0.9rem; }
+.round-result-list { border-top:1px solid #F0F0F0; padding-top:12px; display:flex; flex-direction:column; gap:5px; }
+.round-result-row { display:flex; align-items:center; gap:7px; font-size:0.78rem; }
+.round-result-rank { width:16px; font-weight:900; color:var(--muted); text-align:center; flex-shrink:0; }
+.round-result-name { flex:1; font-weight:800; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.round-result-lv { font-weight:900; color:var(--blue); font-size:0.72rem; flex-shrink:0; }
+.round-result-tile { font-weight:900; color:var(--muted); font-size:0.72rem; flex-shrink:0; }
+.round-break-msg { text-align:center; font-size:0.78rem; font-weight:700; color:var(--muted); }
+
+/* ══ LEVEL UP ANIM ══ */
+@keyframes levelup { 0%{opacity:0;transform:translate(-50%,-50%) scale(0.7);}20%{opacity:1;transform:translate(-50%,-50%) scale(1.1);}80%{opacity:1;transform:translate(-50%,-50%) scale(1);}100%{opacity:0;transform:translate(-50%,-50%) scale(1);} }
+.levelup-anim { position:absolute; top:40%; left:50%; transform:translate(-50%,-50%); pointer-events:none; z-index:40; text-align:center; animation:levelup 2.5s ease forwards; }
+.levelup-text { font-size:clamp(1.2rem,4vw,1.8rem); font-weight:900; color:#FFD700; text-shadow:0 2px 12px rgba(0,0,0,0.35); letter-spacing:0.08em; }
+.levelup-num  { font-size:clamp(1.8rem,6vw,2.8rem); font-weight:900; color:#fff; text-shadow:0 2px 16px rgba(0,0,0,0.4); }
