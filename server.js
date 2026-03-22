@@ -314,16 +314,31 @@ process.on('SIGTERM', () => { saveTiles(); process.exit(0); });
 // ── 유틸 ─────────────────────────────────────────────
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-function spawnPosition(team) {
-  const spawns = {
-    red:   { x: TILE_SIZE * 3,            y: TILE_SIZE * 3 },
-    blue:  { x: TILE_SIZE * (GRID_W - 3), y: TILE_SIZE * 3 },
-    green: { x: TILE_SIZE * (GRID_W / 2), y: TILE_SIZE * (GRID_H - 3) },
-  };
-  const s = spawns[team];
+function spawnPosition() {
+  const SPAWN_MARGIN   = 2;           // 맵 가장자리에서 최소 2타일 안쪽
+  const MIN_DIST       = TILE_SIZE * 5; // 다른 플레이어와 최소 5타일 거리
+  const MAX_ATTEMPTS   = 30;           // 최대 시도 횟수
+
+  const minX = TILE_SIZE * SPAWN_MARGIN + PLAYER_RADIUS;
+  const maxX = TILE_SIZE * (GRID_W - SPAWN_MARGIN) - PLAYER_RADIUS;
+  const minY = TILE_SIZE * SPAWN_MARGIN + PLAYER_RADIUS;
+  const maxY = TILE_SIZE * (GRID_H - SPAWN_MARGIN) - PLAYER_RADIUS;
+
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    const x = minX + Math.random() * (maxX - minX);
+    const y = minY + Math.random() * (maxY - minY);
+
+    // 모든 플레이어와 최소 거리 확인
+    const tooClose = Object.values(players).some(p =>
+      Math.hypot(p.x - x, p.y - y) < MIN_DIST
+    );
+    if (!tooClose) return { x, y };
+  }
+
+  // 30번 시도 후에도 못 찾으면 그냥 랜덤 위치 반환
   return {
-    x: clamp(s.x + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_W * TILE_SIZE - PLAYER_RADIUS),
-    y: clamp(s.y + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_H * TILE_SIZE - PLAYER_RADIUS),
+    x: minX + Math.random() * (maxX - minX),
+    y: minY + Math.random() * (maxY - minY),
   };
 }
 
@@ -422,7 +437,7 @@ function checkBulletCollisions() {
       if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
         // 타일 손실 적용 (피격 플레이어 개인 타일만)
         loseTiles(pid);
-        const spawn = spawnPosition(p.team);
+        const spawn = spawnPosition();
         p.x = spawn.x; p.y = spawn.y;
         // 리스폰 시 무적 부여
         p.invincibleUntil = Date.now() + INVINCIBLE_MS;
@@ -582,7 +597,7 @@ io.on('connection', (socket) => {
       spawnX = players[socket.id].x;
       spawnY = players[socket.id].y;
     } else {
-      const sp = spawnPosition(assignedTeam);
+      const sp = spawnPosition();
       spawnX = sp.x; spawnY = sp.y;
     }
 
