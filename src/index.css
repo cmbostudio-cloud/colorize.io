@@ -169,8 +169,11 @@ html, body, #root {
 
 /* ══ LEVEL / XP ══ */
 .hud-level-wrap { display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0; }
+.hud-level-row { display:flex; align-items:baseline; gap:4px; }
 .hud-level { font-size:0.65rem; font-weight:900; color:var(--text); letter-spacing:0.02em; }
-.hud-xp-track { width:44px; height:4px; border-radius:3px; background:#ECECEC; overflow:hidden; }
+.hud-xp-text { font-size:0.55rem; font-weight:700; color:#888; letter-spacing:0.01em; white-space:nowrap; }
+.hud-xp-sep { margin:0 1px; color:#bbb; }
+.hud-xp-track { width:72px; height:4px; border-radius:3px; background:#ECECEC; overflow:hidden; }
 .hud-xp-fill { height:100%; border-radius:3px; transition:width 0.3s ease; }
 
 /* ══ ROUND END OVERLAY ══ */
