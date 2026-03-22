@@ -1,0 +1,10 @@
+npm run build        # 빌드 (src/ → dist/)
+git add .
+git commit -m "수정 내용"
+git push             # Railway 자동 배포
+
+이거 순서 지켜
+
+게임 로직/UI 수정 → src/App.jsx 게임 플레이, 소켓 이벤트, React 컴포넌트 전부 여기 있습니다.
+스타일 수정 → src/index.css 색상, 레이아웃, 애니메이션 등 CSS 전부 여기 있습니다.
+서버 로직 수정 → server.js 보안, 게임 규칙, 라운드 시스템 등 서버 코드는 여기 있습니다.
