@@ -223,6 +223,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[leaderboard,setLeaderboard]=useState([]);
   const[roundTimeLeft,setRoundTimeLeft]=useState(ROUND_MS);
   const[mobileChatOpen,setMobileChatOpen]=useState(false);
+  const[strongholds,setStrongholds]=useState([]);
+  const[teamBuffs,setTeamBuffs]=useState({red:false,blue:false,green:false});
   const mobileChatOpenRef=useRef(false);
   const _setMobileChatOpen=(v)=>{ mobileChatOpenRef.current=v; setMobileChatOpen(v); };
   const roundStartRef=useRef(Date.now());
@@ -384,9 +386,56 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
 
     const app=new PIXI.Application({resizeTo:containerRef.current,backgroundColor:0xF7F5F0,antialias:true,autoDensity:true});
     containerRef.current.appendChild(app.view);
-    const tileLayer=new PIXI.Container(), playerLayer=new PIXI.Container(), bulletLayer=new PIXI.Container();
-    app.stage.addChild(tileLayer,playerLayer,bulletLayer);
+    const tileLayer=new PIXI.Container(), shLayer=new PIXI.Container(), playerLayer=new PIXI.Container(), bulletLayer=new PIXI.Container();
+    app.stage.addChild(tileLayer,shLayer,playerLayer,bulletLayer);
     buildTiles(tileLayer,s.tiles);
+
+    // ── 거점 렌더 ──
+    const SH_R = 3; // 타일 단위 반경 (서버와 동일)
+    const SH_COLORS = { red:0xFF5C5C, blue:0x5C9EFF, green:0x5CDB95, null:0xFFFFFF };
+    const shGfxMap = {}; // id → { ring, core, label }
+
+    function renderStrongholds(shData) {
+      shData.forEach(sh => {
+        const cx = (sh.x + 0.5) * TILE_SIZE;
+        const cy = (sh.y + 0.5) * TILE_SIZE;
+        const color = SH_COLORS[sh.owner] ?? 0xFFFFFF;
+        const alpha = sh.owner ? 0.55 : 0.18;
+
+        if (!shGfxMap[sh.id]) {
+          // 외곽 링 (점선 효과는 PIXI에서 어려우므로 얇은 원으로)
+          const ring = new PIXI.Graphics();
+          // 중심 코어
+          const core = new PIXI.Graphics();
+          // 텍스트 레이블
+          const label = new PIXI.Text('⚑', {fontFamily:'Nunito',fontSize:18,fontWeight:'900',fill:0xFFFFFF,stroke:0x000000,strokeThickness:3});
+          label.anchor.set(0.5);
+          shLayer.addChild(ring, core, label);
+          shGfxMap[sh.id] = { ring, core, label };
+        }
+
+        const { ring, core, label } = shGfxMap[sh.id];
+
+        // 외곽 링 — 점령 반경 표시
+        ring.clear();
+        ring.lineStyle(2, color, 0.5);
+        ring.drawCircle(cx, cy, SH_R * TILE_SIZE);
+
+        // 중심 코어 — 점령 팀 색
+        core.clear();
+        core.beginFill(color, alpha);
+        core.drawCircle(cx, cy, TILE_SIZE * 0.9);
+        core.endFill();
+        // 내부 빛나는 작은 원
+        core.beginFill(0xFFFFFF, sh.owner ? 0.35 : 0.12);
+        core.drawCircle(cx, cy, TILE_SIZE * 0.38);
+        core.endFill();
+
+        label.x = cx; label.y = cy;
+        label.style.fill = sh.owner ? 0xFFFFFF : 0x999999;
+      });
+    }
+    renderShRef.current = renderStrongholds;
 
     const socket=io(SERVER_URL,{
       transports:['websocket'],
@@ -411,14 +460,12 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     });
 
     // init — 고스트 방지: GFX 전체 교체
-    socket.on('init',({id,tiles,players,invincibleMs,round,roundTimeLeft})=>{
+    socket.on('init',({id,tiles,players,invincibleMs,round,roundTimeLeft,strongholds:initSh})=>{
       s.myId=id;
       if(tiles)s.tiles=tiles;
-      // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
         const e=playerGfxMap.current[pid]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[pid];
       });
-      // 총알 GFX도 전부 정리
       Object.keys(bulletGfxMap.current).forEach(bid=>{
         const sp=bulletGfxMap.current[bid]; if(sp.parent)sp.parent.removeChild(sp); sp.destroy(); delete bulletGfxMap.current[bid];
       });
@@ -429,6 +476,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       setPlayerCount(Object.keys(s.players).length);
       if(round)setRoundNumber(round);
       if(roundTimeLeft!=null)setRoundTimeLeft(roundTimeLeft);
+      if(initSh)setStrongholds(initSh);
     });
 
     // player_join — 고스트 방지: 중복 GFX 제거 후 재등록
@@ -463,10 +511,13 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     // 서버 강제 위치 보정 (텔레포트 감지 시)
     socket.on('force_position',({x,y})=>{const me=s.players[s.myId];if(me){me.x=x;me.y=y;me.tx=x;me.ty=y;}});
     // 개인 순위표
-    socket.on('leaderboard',({leaderboard,teamTiles})=>{
+    socket.on('leaderboard',({leaderboard,teamTiles,teamBuffs:tb})=>{
       setLeaderboard(leaderboard);
       if(teamTiles) setScores({red:teamTiles.red??0,blue:teamTiles.blue??0,green:teamTiles.green??0});
+      if(tb) setTeamBuffs(tb);
     });
+    // 거점 상태 갱신
+    socket.on('strongholds',(data)=>setStrongholds(data));
     socket.on('chat',({id,name,team,text})=>{
       const color=TEAM_CSS[team]??'#999';
       setChatMsgs(msgs=>[...msgs.slice(-49),{id:Date.now()+Math.random(),name,color,text}]);
@@ -594,8 +645,8 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
 
       s.camX=Math.max(0,Math.min(GRID_W*TILE_SIZE-app.screen.width,s.camX));
       s.camY=Math.max(0,Math.min(GRID_H*TILE_SIZE-app.screen.height,s.camY));
-      tileLayer.x=playerLayer.x=bulletLayer.x=-s.camX;
-      tileLayer.y=playerLayer.y=bulletLayer.y=-s.camY;
+      tileLayer.x=playerLayer.x=bulletLayer.x=shLayer.x=-s.camX;
+      tileLayer.y=playerLayer.y=bulletLayer.y=shLayer.y=-s.camY;
 
       Object.entries(s.players).forEach(([id,p])=>{if(id!==s.myId){p.x=lerp(p.x??p.tx,p.tx,0.18);p.y=lerp(p.y??p.ty,p.ty,0.18);}});
       // [FIX] 총알 위치를 spawnTime 기준 경과 시간으로 직접 계산
@@ -632,6 +683,13 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
     };
   },[]);
 
+  // 거점 상태 변경 시 PIXI 렌더 (shLayerRef로 클로저 브리지)
+  const shLayerRef = useRef(null);
+  const renderShRef = useRef(null);
+  useEffect(()=>{
+    if(renderShRef.current) renderShRef.current(strongholds);
+  },[strongholds]);
+
   // 팀 색상 ref (게임루프 클로저에서 접근용)
   const tcRef = useRef(TEAM_CSS[playerTeam] ?? '#999');
 
@@ -646,7 +704,13 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const timerMin = Math.floor(timerSec / 60);
   const timerS   = timerSec % 60;
   const timerStr = `${timerMin}:${String(timerS).padStart(2,'0')}`;
-  const timerUrgent = timerSec <= 30; // 30초 이하면 빨간색
+  const timerUrgent = timerSec <= 30;
+
+  // 내 팀 버프 여부
+  const myBuff = teamBuffs[playerTeam] ?? false;
+
+  // 거점 소유 팀 색 (없으면 회색)
+  const shOwnerColor = (owner) => owner ? TEAM_CSS[owner] : '#CCCCCC';
 
   // 팀 메달
   const MEDAL=['🥇','🥈','🥉'];
@@ -656,12 +720,23 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       <div className="hud">
         <div className="hud-logo"><div className="hud-logo-circle"/><span style={{color:'#555',fontWeight:900}}>colorize</span><span style={{color:'#999',fontSize:'0.8em'}}>.io</span></div>
         <div className="score-bar"><div className="score-seg" style={{width:`${rp}%`,background:TEAM_CSS.red}}/><div className="score-seg" style={{width:`${bp}%`,background:TEAM_CSS.blue}}/><div className="score-seg" style={{width:`${gp}%`,background:TEAM_CSS.green}}/></div>
-        <div className="hud-scores">{['red','blue','green'].map(tm=><div className="hud-score" key={tm}><div className="hud-dot" style={{background:TEAM_CSS[tm]}}/>{scores[tm]}</div>)}</div>
+        <div className="hud-scores">{['red','blue','green'].map(tm=><div className="hud-score" key={tm}><div className="hud-dot" style={{background:TEAM_CSS[tm]}}/>{scores[tm]}{teamBuffs[tm]&&<span className="hud-buff">⚡</span>}</div>)}</div>
+
+        {/* 거점 현황 */}
+        <div className="hud-strongholds">
+          {strongholds.map(sh=>(
+            <div key={sh.id} className="hud-sh-dot" style={{background: shOwnerColor(sh.owner), boxShadow: sh.owner ? `0 0 6px ${shOwnerColor(sh.owner)}88` : 'none'}} title={sh.owner ? `${sh.owner} 점령` : '중립'}/>
+          ))}
+        </div>
+
         <div className="hud-timer" style={{color: timerUrgent ? '#E24B4A' : 'inherit', fontWeight: timerUrgent ? 700 : 500}}>
           ⏱ {timerStr}
         </div>
         <div className="hud-right">
-          <div className="hud-player"><span>{playerName}</span> · {t.team_names[playerTeam]}</div>
+          <div className="hud-player">
+            <span>{playerName}</span> · {t.team_names[playerTeam]}
+            {myBuff && <span className="hud-buff-badge">⚡ 버프</span>}
+          </div>
           <div className="player-count">👥 {playerCount}</div>
           <button className="hud-settings-btn" onClick={()=>setShowSettings(true)}>⚙️</button>
         </div>
