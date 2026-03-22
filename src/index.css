@@ -200,30 +200,27 @@ html, body, #root {
 .levelup-num  { font-size:clamp(1.8rem,6vw,2.8rem); font-weight:900; color:#fff; text-shadow:0 2px 16px rgba(0,0,0,0.4); }
 
 /* ══ UPGRADE PANEL ══ */
-.upgrade-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:60; backdrop-filter:blur(4px); animation:fadeIn 0.18s ease; }
-.upgrade-panel { background:var(--card); border-radius:22px; padding:22px 20px 18px; box-shadow:0 8px 40px rgba(0,0,0,0.22); width:min(380px,92vw); display:flex; flex-direction:column; gap:14px; max-height:90vh; overflow-y:auto; }
-.upgrade-header { display:flex; align-items:center; gap:8px; }
-.upgrade-title { font-size:1rem; font-weight:900; flex:1; display:flex; align-items:center; gap:6px; }
-.upgrade-title-icon { font-size:1.1rem; }
-.upgrade-points-badge { font-size:0.75rem; font-weight:800; color:var(--blue); background:#EFF5FF; border-radius:20px; padding:3px 10px; flex-shrink:0; }
-.upgrade-close { background:#F0F0F0; border:none; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.9rem; color:var(--muted); transition:background 0.15s; flex-shrink:0; }
-.upgrade-close:hover { background:#E0E0E0; }
-.upgrade-list { display:flex; flex-direction:column; gap:8px; }
-.upgrade-row { display:flex; align-items:center; gap:12px; background:#F9F9F9; border-radius:14px; padding:11px 13px; transition:background 0.15s; }
-.upgrade-row.maxed { opacity:0.55; }
-.upgrade-icon { font-size:1.5rem; width:36px; text-align:center; flex-shrink:0; }
+/* 미니맵(top:10px, left:12px, h=150px) 바로 아래에 고정 */
+.upgrade-panel { position:absolute; top:174px; left:12px; width:200px; background:rgba(255,255,255,0.92); backdrop-filter:blur(8px); border-radius:14px; padding:9px 10px 10px; box-shadow:0 2px 16px rgba(0,0,0,0.10); z-index:5; display:flex; flex-direction:column; gap:5px; }
+@media (max-width:768px) and (pointer:coarse) { .upgrade-panel { display:none; } }
+.upgrade-header { display:flex; align-items:center; gap:5px; margin-bottom:2px; }
+.upgrade-title { font-size:0.62rem; font-weight:900; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; flex:1; }
+.upgrade-points-badge { font-size:0.62rem; font-weight:900; color:#fff; background:var(--blue); border-radius:20px; padding:1px 6px; flex-shrink:0; animation:pulse-upgrade 1.2s ease infinite; }
+.upgrade-close { display:none; }
+.upgrade-list { display:flex; flex-direction:column; gap:3px; }
+.upgrade-row { display:flex; align-items:center; gap:7px; padding:4px 2px; }
+.upgrade-row.maxed { opacity:0.45; }
+.upgrade-icon { font-size:0.95rem; width:20px; text-align:center; flex-shrink:0; line-height:1; }
 .upgrade-info { flex:1; min-width:0; }
-.upgrade-name { font-size:0.82rem; font-weight:900; color:var(--text); }
-.upgrade-desc { font-size:0.67rem; font-weight:700; color:var(--muted); margin-top:1px; }
-.upgrade-stars { display:flex; gap:3px; margin-top:5px; }
-.upgrade-star { width:12px; height:6px; border-radius:3px; background:#E8E8E8; transition:background 0.2s; }
+.upgrade-name { font-size:0.68rem; font-weight:800; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.upgrade-stars { display:flex; gap:2px; margin-top:2px; }
+.upgrade-star { width:10px; height:4px; border-radius:2px; background:#E0E0E0; transition:background 0.2s; }
 .upgrade-star.filled { background:var(--blue); }
-.upgrade-btn { width:36px; height:36px; border-radius:10px; border:none; font-size:1.1rem; font-weight:900; cursor:pointer; flex-shrink:0; background:#E8E8E8; color:#BBB; transition:all 0.15s; }
-.upgrade-btn.active { background:var(--blue); color:#fff; box-shadow:0 3px 10px rgba(92,158,255,0.4); }
-.upgrade-btn.active:hover { opacity:0.88; transform:scale(1.06); }
+.upgrade-btn { width:24px; height:24px; border-radius:7px; border:none; font-size:0.85rem; font-weight:900; cursor:pointer; flex-shrink:0; background:#EBEBEB; color:#BBB; transition:all 0.15s; line-height:1; padding:0; }
+.upgrade-btn.active { background:var(--blue); color:#fff; box-shadow:0 2px 6px rgba(92,158,255,0.45); }
+.upgrade-btn.active:hover { opacity:0.88; transform:scale(1.08); }
 .upgrade-btn:disabled { cursor:default; }
-.upgrade-footer { text-align:center; font-size:0.7rem; font-weight:700; color:var(--muted); padding-top:4px; }
 
-/* HUD 업그레이드 버튼 (포인트 알림) */
+/* HUD 업그레이드 포인트 뱃지 */
 .hud-upgrade-btn { border:none; border-radius:20px; background:var(--blue); color:#fff; font-size:0.6rem; font-weight:900; cursor:pointer; padding:1px 6px; min-width:18px; height:16px; line-height:1; animation:pulse-upgrade 1.2s ease infinite; flex-shrink:0; }
 @keyframes pulse-upgrade { 0%,100%{box-shadow:0 0 0 0 rgba(92,158,255,0.6);} 50%{box-shadow:0 0 0 5px rgba(92,158,255,0);} }
