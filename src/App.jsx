@@ -720,11 +720,11 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
   const gp=(scores.green/total*100).toFixed(1);
   const tc=tcRef.current;
 
-  // XP 바 계산 — 음수·NaN·0나눗셈 방어
-  const curLvXp = level*level*10;
-  const nxtLvXp = (level+1)*(level+1)*10;
-  const xpRange = nxtLvXp - curLvXp;
-  const xpPct   = xpRange>0 ? Math.min(100, Math.max(0, (xp-curLvXp)/xpRange*100)).toFixed(1) : '100';
+  // XP 바 계산 — 레벨업 필요 XP: 100 * 1.1^(level-1), 1.1배씩 증가
+  function xpForLevel(lv){ return Math.floor(100 * Math.pow(1.1, lv - 1)); }
+  const xpNeeded = xpForLevel(level);  // 현재 레벨에서 다음 레벨까지 필요 XP
+  const xpCurrent = xp % xpNeeded;    // 현재 레벨 내 누적 XP
+  const xpPct = xpNeeded > 0 ? Math.min(100, Math.max(0, xpCurrent / xpNeeded * 100)).toFixed(1) : '100';
 
   return(
     <div className="game-wrapper">
@@ -740,7 +740,10 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         <div className="hud-right">
           {/* 레벨 + XP 바 */}
           <div className="hud-level-wrap">
-            <div className="hud-level">Lv.{level}</div>
+            <div className="hud-level-row">
+              <div className="hud-level">Lv.{level}</div>
+              <div className="hud-xp-text">{xpCurrent}<span className="hud-xp-sep">/</span>{xpNeeded}</div>
+            </div>
             <div className="hud-xp-track"><div className="hud-xp-fill" style={{width:`${xpPct}%`,background:TEAM_CSS[playerTeam]}}/></div>
           </div>
           <div className="hud-player"><span>{playerName}</span> · {t.team_names[playerTeam]}</div>
