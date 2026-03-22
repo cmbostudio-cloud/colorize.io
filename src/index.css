@@ -119,7 +119,7 @@ html, body, #root {
 .reload-bar-track { width:140px; height:8px; border-radius:6px; background:rgba(255,255,255,0.22); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.18); }
 .reload-bar-fill  { height:100%; border-radius:6px; width:0%; }
 @media (max-width:768px) and (pointer:coarse) {
-  .reload-bar-wrap { bottom:clamp(140px,18vh,180px); }
+  .reload-bar-wrap { bottom:16px; }
   .reload-bar-track { width:110px; height:7px; }
   .reload-bar-label { font-size:0.58rem; }
 }
@@ -127,7 +127,7 @@ html, body, #root {
 /* Ping */
 .overlay-hud { position:absolute; bottom:14px; right:14px; display:flex; flex-direction:column; align-items:flex-end; gap:5px; pointer-events:none; z-index:5; }
 .ping-badge { font-size:0.66rem; font-weight:800; color:var(--muted); }
-@media (max-width:768px) and (pointer:coarse) { .overlay-hud { bottom:clamp(140px,18vh,180px); right:8px; } }
+@media (max-width:768px) and (pointer:coarse) { .overlay-hud { bottom:16px; right:8px; } }
 
 /* Controls hint */
 .controls-hint { position:absolute; bottom:12px; left:12px; font-size:0.66rem; font-weight:700; color:var(--muted); pointer-events:none; line-height:1.9; z-index:5; }
