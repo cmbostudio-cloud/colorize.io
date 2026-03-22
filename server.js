@@ -406,7 +406,7 @@ function endRound() {
     .map(p => ({ id: p.id, name: p.name, team: p.team, tiles: p.personalTiles ?? 0, level: calcLevel(p.xp), xp: p.xp ?? 0 }))
     .sort((a, b) => b.tiles - a.tiles);
 
-  io.emit('round_end', { winner, teamTiles, results, breakMs: ROUND_BREAK_MS, roundNum: round.num });
+  io.emit('round_end', { winner, teamTiles, results, breakMs: ROUND_BREAK_MS });
   console.log(`🏁 라운드 ${round.num} 종료 — 승자: ${winner} (${teamTiles[winner]}칸)`);
 
   setTimeout(() => {
@@ -420,7 +420,7 @@ function endRound() {
     resetMap();
 
     // round_start를 먼저 emit해서 클라이언트가 타이머·상태를 업데이트하게 함
-    io.emit('round_start', { roundNum: round.num, endsAt: round.endsAt });
+    io.emit('round_start', { endsAt: round.endsAt });
 
     // respawn은 100ms 뒤 — 클라이언트가 round_reset/round_start를 처리한 후 적용
     setTimeout(() => {
@@ -716,7 +716,7 @@ setInterval(() => {
 
   io.emit('leaderboard', {
     leaderboard, teamTiles, teamCounts,
-    round: { num: round.num, phase: round.phase, timeLeft: roundTimeLeft() },
+    round: { phase: round.phase, timeLeft: roundTimeLeft() },
   });
 }, 2000);
 
@@ -813,7 +813,7 @@ io.on('connection', (socket) => {
       id:            socket.id,
       tilesPacked,
       invincibleMs:  INVINCIBLE_MS,
-      round: { num: round.num, phase: round.phase, endsAt: round.endsAt },
+      round: { phase: round.phase, endsAt: round.endsAt },
       xp:            prevXp,
       level:         calcLevel(prevXp),
       players: Object.fromEntries(
