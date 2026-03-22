@@ -349,12 +349,10 @@ function resetMap() {
   tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
   personalTileSets.forEach((set, sid) => {
     set.clear();
-    if (players[sid]) {
-      players[sid].personalTiles = 0;
-    }
+    if (players[sid]) players[sid].personalTiles = 0;
   });
+  tileOwners.clear();
   bullets = {};
-  // round_reset을 먼저 emit — 클라이언트가 맵 초기화를 완료할 시간을 줌
   io.emit('round_reset', { tiles });
 }
 
@@ -455,9 +453,8 @@ function tileAt(x, y) {
   return tiles[y][x];
 }
 
-// ── 사망 시 타일 손실 (피격 플레이어 개인 타일만) ────────
-// personalTileSets: Map<socketId, Set<"x,y">>
-const personalTileSets = new Map();
+// tile_paint 배치 — 매 틱마다 모아서 일괄 전송 (패킷 폭발 방지)
+const pendingTilePaints = new Map(); // key("x,y") → {x,y,team}
 
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
@@ -465,37 +462,38 @@ function paintTile(tx, ty, team, ownerId) {
 
   const key = `${tx},${ty}`;
 
-  // 이전 소유자의 Set에서 제거하고 카운터도 감소
-  personalTileSets.forEach((set, sid) => {
-    if (set.has(key)) {
-      set.delete(key);
-      if (players[sid]) {
-        players[sid].personalTiles = Math.max(0, (players[sid].personalTiles ?? 0) - 1);
-      }
+  // 기존 소유자 O(1) 조회 → Set에서 제거 + 카운터 감소
+  const prevOwner = tileOwners.get(key);
+  if (prevOwner) {
+    const prevSet = personalTileSets.get(prevOwner);
+    if (prevSet) prevSet.delete(key);
+    if (players[prevOwner]) {
+      players[prevOwner].personalTiles = Math.max(0, (players[prevOwner].personalTiles ?? 0) - 1);
     }
-  });
+    tileOwners.delete(key);
+  }
 
   tiles[ty][tx] = team;
 
-  // 새 소유자의 Set에 추가하고 카운터 증가
+  // 새 소유자 등록
   if (ownerId && players[ownerId] && team) {
     if (!personalTileSets.has(ownerId)) personalTileSets.set(ownerId, new Set());
     personalTileSets.get(ownerId).add(key);
+    tileOwners.set(key, ownerId);
     players[ownerId].personalTiles = (players[ownerId].personalTiles ?? 0) + 1;
 
-    // XP 지급 (새 타일을 칠 때만 +1)
-    const prevXp  = players[ownerId].xp ?? 0;
-    const prevLv  = calcLevel(prevXp);
+    // XP 지급
+    const prevXp = players[ownerId].xp ?? 0;
+    const prevLv = calcLevel(prevXp);
     players[ownerId].xp = prevXp + 1;
-    const newLv   = calcLevel(players[ownerId].xp);
-
-    // 레벨업 발생 시 해당 클라이언트에게만 알림
+    const newLv  = calcLevel(players[ownerId].xp);
     if (newLv > prevLv) {
       io.to(ownerId).emit('level_up', { level: newLv, xp: players[ownerId].xp });
     }
   }
 
-  io.emit('tile_paint', { x: tx, y: ty, team });
+  // 즉시 emit 대신 배치 큐에 추가 (같은 타일은 마지막 값으로 덮어씀)
+  pendingTilePaints.set(key, { x: tx, y: ty, team });
 }
 
 function loseTiles(killedSocketId) {
@@ -514,13 +512,14 @@ function loseTiles(killedSocketId) {
     [owned[i], owned[j]] = [owned[j], owned[i]];
   }
   owned.slice(0, loss).forEach(({ x, y }) => {
+    const k = `${x},${y}`;
     tiles[y][x] = null;
-    ownedSet.delete(`${x},${y}`);
-    // 카운터도 감소
+    ownedSet.delete(k);
+    tileOwners.delete(k);
     if (players[killedSocketId]) {
       players[killedSocketId].personalTiles = Math.max(0, (players[killedSocketId].personalTiles ?? 0) - 1);
     }
-    io.emit('tile_paint', { x, y, team: null });
+    pendingTilePaints.set(k, { x, y, team: null });
   });
 }
 
@@ -611,8 +610,19 @@ function getTilesOnSegment(x0, y0, x1, y1) {
   return result;
 }
 
-// ── 서버 틱 (총알 이동) ───────────────────────────────
+// ── 서버 틱 (총알 이동 + tile_paint 배치 flush) ──────────
 setInterval(() => {
+  // tile_paint 배치 flush — 한 틱 안에 쌓인 변경을 한 번에 전송
+  if (pendingTilePaints.size > 0) {
+    const batch = [...pendingTilePaints.values()];
+    pendingTilePaints.clear();
+    if (batch.length === 1) {
+      io.emit('tile_paint', batch[0]);
+    } else {
+      io.emit('tiles_batch', batch);
+    }
+  }
+
   if (Object.keys(bullets).length === 0) return;
 
   const now = Date.now();
@@ -928,9 +938,13 @@ io.on('connection', (socket) => {
       if (ipSet2.size === 0) ipConnections.delete(ip);
     }
 
-    // rate limit / violation / personalTileSet 정리
+    // rate limit / violation / personalTileSet / tileOwners 정리
     rateLimiters.delete(socket.id);
-    personalTileSets.delete(socket.id);
+    const ownedSet = personalTileSets.get(socket.id);
+    if (ownedSet) {
+      ownedSet.forEach(key => tileOwners.delete(key));
+      personalTileSets.delete(socket.id);
+    }
     const v = violations.get(socket.id);
     if (v) { clearInterval(v.decayTimer); violations.delete(socket.id); }
 
