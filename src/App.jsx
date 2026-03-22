@@ -392,24 +392,28 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     buildTiles(tileLayer,s.tiles);
 
     // ── 거점 렌더 ──
-    const SH_R = 3; // 타일 단위 반경 (서버와 동일)
-    const SH_COLORS = { red:0xFF5C5C, blue:0x5C9EFF, green:0x5CDB95, null:0xFFFFFF };
-    const shGfxMap = {}; // id → { ring, core, label }
+    const SH_R = 3;
+    const shGfxMap = {};
 
     function renderStrongholds(shData) {
+      if (!shData || shData.length === 0) return;
+      const now = Date.now();
       shData.forEach(sh => {
         const cx = (sh.x + 0.5) * TILE_SIZE;
         const cy = (sh.y + 0.5) * TILE_SIZE;
-        const color = SH_COLORS[sh.owner] ?? 0xFFFFFF;
-        const alpha = sh.owner ? 0.55 : 0.18;
+        // null owner → 회색, 팀 owner → 팀 색
+        const color = sh.owner ? TEAM_COLORS[sh.owner] : 0xAAAAAA;
+        const alpha = sh.owner ? 0.7 : 0.45;
+        // 중립일 때 천천히 맥박 효과 (0.3~0.6)
+        const pulse = sh.owner ? 1 : 0.45 + 0.15 * Math.sin(now / 600);
 
         if (!shGfxMap[sh.id]) {
-          // 외곽 링 (점선 효과는 PIXI에서 어려우므로 얇은 원으로)
           const ring = new PIXI.Graphics();
-          // 중심 코어
           const core = new PIXI.Graphics();
-          // 텍스트 레이블
-          const label = new PIXI.Text('⚑', {fontFamily:'Nunito',fontSize:18,fontWeight:'900',fill:0xFFFFFF,stroke:0x000000,strokeThickness:3});
+          const label = new PIXI.Text('⚑', {
+            fontFamily:'Nunito', fontSize:20, fontWeight:'900',
+            fill: 0xFFFFFF, stroke: 0x000000, strokeThickness: 3,
+          });
           label.anchor.set(0.5);
           shLayer.addChild(ring, core, label);
           shGfxMap[sh.id] = { ring, core, label };
@@ -417,23 +421,23 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
 
         const { ring, core, label } = shGfxMap[sh.id];
 
-        // 외곽 링 — 점령 반경 표시
+        // 외곽 링 — 점령 반경
         ring.clear();
-        ring.lineStyle(2, color, 0.5);
+        ring.lineStyle(2.5, color, 0.6);
         ring.drawCircle(cx, cy, SH_R * TILE_SIZE);
 
-        // 중심 코어 — 점령 팀 색
+        // 중심 코어
         core.clear();
-        core.beginFill(color, alpha);
-        core.drawCircle(cx, cy, TILE_SIZE * 0.9);
+        core.beginFill(color, alpha * pulse);
+        core.drawCircle(cx, cy, TILE_SIZE * 1.1);
         core.endFill();
-        // 내부 빛나는 작은 원
-        core.beginFill(0xFFFFFF, sh.owner ? 0.35 : 0.12);
-        core.drawCircle(cx, cy, TILE_SIZE * 0.38);
+        core.beginFill(0xFFFFFF, sh.owner ? 0.4 : 0.2 * pulse);
+        core.drawCircle(cx, cy, TILE_SIZE * 0.45);
         core.endFill();
 
-        label.x = cx; label.y = cy;
-        label.style.fill = sh.owner ? 0xFFFFFF : 0x999999;
+        label.x = cx;
+        label.y = cy;
+        label.alpha = sh.owner ? 1 : 0.6;
       });
     }
     renderStrongholds(strongholdsRef.current); // 초기 렌더 (거점 위치 즉시 표시)
