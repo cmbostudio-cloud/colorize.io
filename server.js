@@ -997,6 +997,11 @@ function sanitizePlayer(p) {
 
 // ── 서버 시작 ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+// SPA catch-all
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 server.listen(PORT, () => {
   console.log(`🎨 daubs.io 서버 실행 중 → http://localhost:${PORT}`);
 });
