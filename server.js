@@ -997,8 +997,9 @@ function sanitizePlayer(p) {
 
 // ── 서버 시작 ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-// SPA catch-all
-app.get('*', (req, res) => {
+// SPA catch-all (sw.js, manifest.json 제외)
+app.get('*', (req, res, next) => {
+  if (req.path === '/sw.js' || req.path === '/manifest.json') return next();
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
