@@ -6,15 +6,16 @@ import { io } from 'socket.io-client';
 
 /* ══════════════ I18N ══════════════ */
 const LANGS = {
-  en: { code:'en', flag:'🇺🇸', label:'English', nickname:'Nickname', nickname_ph:'Enter your name', team:'Choose Team', red:'Red', blue:'Blue', green:'Green', start:'Play →', settings:'Settings', language:'Language', save:'Save', reload:'RELOAD', reconnecting:'🔄 Reconnecting', ping:'ping', move_hint:'Move', shoot_hint:'Hold 🖱 to Shoot', joystick_move:'MOVE', joystick_shoot:'SHOOT', chat_ph:'Press Enter to chat', chat_send:'Send', join_msg:n=>`🎮 ${n} joined`, leave_msg:n=>`👋 ${n} left`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'Red',blue:'Blue',green:'Green'}, leaderboard_title:'🏆 Ranking', tiles_unit:n=>`${n} tiles` },
-  ko: { code:'ko', flag:'🇰🇷', label:'한국어', nickname:'닉네임', nickname_ph:'이름을 입력하세요', team:'팀 선택', red:'레드', blue:'블루', green:'그린', start:'게임 시작 →', settings:'설정', language:'언어', save:'저장', reload:'장전 중', reconnecting:'🔄 재연결 중', ping:'ping', move_hint:'이동', shoot_hint:'🖱 꾹 누르면 발사', joystick_move:'이동', joystick_shoot:'발사', chat_ph:'Enter로 채팅', chat_send:'전송', join_msg:n=>`🎮 ${n} 입장`, leave_msg:n=>`👋 ${n} 퇴장`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'레드팀',blue:'블루팀',green:'그린팀'}, leaderboard_title:'🏆 순위', tiles_unit:n=>`${n}칸` },
-  ja: { code:'ja', flag:'🇯🇵', label:'日本語', nickname:'ニックネーム', nickname_ph:'名前を入力', team:'チーム選択', red:'レッド', blue:'ブルー', green:'グリーン', start:'プレイ →', settings:'設定', language:'言語', save:'保存', reload:'リロード', reconnecting:'🔄 再接続中', ping:'ping', move_hint:'移動', shoot_hint:'🖱 長押しで射撃', joystick_move:'移動', joystick_shoot:'射撃', chat_ph:'Enterでチャット', chat_send:'送信', join_msg:n=>`🎮 ${n} 参加`, leave_msg:n=>`👋 ${n} 退出`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'レッド',blue:'ブルー',green:'グリーン'}, leaderboard_title:'🏆 ランキング', tiles_unit:n=>`${n}マス` },
-  zh: { code:'zh', flag:'🇨🇳', label:'中文', nickname:'昵称', nickname_ph:'输入你的名字', team:'选择队伍', red:'红队', blue:'蓝队', green:'绿队', start:'开始游戏 →', settings:'设置', language:'语言', save:'保存', reload:'装弹中', reconnecting:'🔄 重新连接', ping:'延迟', move_hint:'移动', shoot_hint:'🖱 长按射击', joystick_move:'移动', joystick_shoot:'射击', chat_ph:'按Enter聊天', chat_send:'发送', join_msg:n=>`🎮 ${n} 加入`, leave_msg:n=>`👋 ${n} 离开`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'红队',blue:'蓝队',green:'绿队'}, leaderboard_title:'🏆 排行榜', tiles_unit:n=>`${n}格` },
+  en: { code:'en', flag:'🇺🇸', label:'English', nickname:'Nickname', nickname_ph:'Enter your name', team:'Choose Team', red:'Red', blue:'Blue', green:'Green', start:'Play →', settings:'Settings', language:'Language', save:'Save', reload:'RELOAD', reconnecting:'🔄 Reconnecting', ping:'ping', move_hint:'Move', shoot_hint:'Hold 🖱 to Shoot', joystick_move:'MOVE', joystick_shoot:'SHOOT', chat_ph:'Press Enter to chat', chat_send:'Send', join_msg:n=>`🎮 ${n} joined`, leave_msg:n=>`👋 ${n} left`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'Red',blue:'Blue',green:'Green'}, leaderboard_title:'🏆 Ranking', tiles_unit:n=>`${n} tiles`, players_unit:n=>`${n}P` },
+  ko: { code:'ko', flag:'🇰🇷', label:'한국어', nickname:'닉네임', nickname_ph:'이름을 입력하세요', team:'팀 선택', red:'레드', blue:'블루', green:'그린', start:'게임 시작 →', settings:'설정', language:'언어', save:'저장', reload:'장전 중', reconnecting:'🔄 재연결 중', ping:'ping', move_hint:'이동', shoot_hint:'🖱 꾹 누르면 발사', joystick_move:'이동', joystick_shoot:'발사', chat_ph:'Enter로 채팅', chat_send:'전송', join_msg:n=>`🎮 ${n} 입장`, leave_msg:n=>`👋 ${n} 퇴장`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'레드팀',blue:'블루팀',green:'그린팀'}, leaderboard_title:'🏆 순위', tiles_unit:n=>`${n}칸`, players_unit:n=>`${n}명` },
+  ja: { code:'ja', flag:'🇯🇵', label:'日本語', nickname:'ニックネーム', nickname_ph:'名前を入力', team:'チーム選択', red:'レッド', blue:'ブルー', green:'グリーン', start:'プレイ →', settings:'設定', language:'言語', save:'保存', reload:'リロード', reconnecting:'🔄 再接続中', ping:'ping', move_hint:'移動', shoot_hint:'🖱 長押しで射撃', joystick_move:'移動', joystick_shoot:'射撃', chat_ph:'Enterでチャット', chat_send:'送信', join_msg:n=>`🎮 ${n} 参加`, leave_msg:n=>`👋 ${n} 退出`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'レッド',blue:'ブルー',green:'グリーン'}, leaderboard_title:'🏆 ランキング', tiles_unit:n=>`${n}マス`, players_unit:n=>`${n}人` },
+  zh: { code:'zh', flag:'🇨🇳', label:'中文', nickname:'昵称', nickname_ph:'输入你的名字', team:'选择队伍', red:'红队', blue:'蓝队', green:'绿队', start:'开始游戏 →', settings:'设置', language:'语言', save:'保存', reload:'装弹中', reconnecting:'🔄 重新连接', ping:'延迟', move_hint:'移动', shoot_hint:'🖱 长按射击', joystick_move:'移动', joystick_shoot:'射击', chat_ph:'按Enter聊天', chat_send:'发送', join_msg:n=>`🎮 ${n} 加入`, leave_msg:n=>`👋 ${n} 离开`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'红队',blue:'蓝队',green:'绿队'}, leaderboard_title:'🏆 排行榜', tiles_unit:n=>`${n}格`, players_unit:n=>`${n}人` },
 };
 
 /* ══════════════ CONSTANTS ══════════════ */
 const SERVER_URL = window.location.origin;
-const TILE_SIZE=40, TILE_RADIUS=8, GRID_W=40, GRID_H=30;
+const TILE_SIZE=40, TILE_RADIUS=8, GRID_W=80, GRID_H=60;
+const MINIMAP_W=200, MINIMAP_H=150; // 미니맵 픽셀 크기
 const MOVE_SPEED=3, SHOOT_INTERVAL=1000, BULLET_SPEED=12, PLAYER_RADIUS=14, BULLET_RADIUS=7;
 const BULLET_LIFETIME=1000, BULLET_FADE_START=750, REBUILD_THRESHOLD=80;
 const TEAM_COLORS={red:0xFF5C5C,blue:0x5C9EFF,green:0x5CDB95};
@@ -49,7 +50,7 @@ function SettingsModal({lang,onSave,onClose}){
 }
 
 /* ══════════════ LOBBY ══════════════ */
-function Lobby({onJoin,lang,setLang}){
+function Lobby({onJoin,lang,setLang,teamCounts}){
   const t=LANGS[lang];
   const[name,setName]=useState('');
   const[team,setTeam]=useState('blue');
@@ -59,7 +60,9 @@ function Lobby({onJoin,lang,setLang}){
   const Logo=()=>[...'colorize'].map((ch,i)=><span key={i} style={{color:[TEAM_CSS.red,TEAM_CSS.blue,TEAM_CSS.green][i%3]}}>{ch}</span>);
   const Teams=()=>teamDefs.map(tm=>(
     <button key={tm.id} className={`team-btn ${team===tm.id?`active-${tm.id}`:''}`} onClick={()=>setTeam(tm.id)}>
-      <div className="team-dot" style={{background:tm.color}}/>{tm.label}
+      <div className="team-dot" style={{background:tm.color}}/>
+      <span>{tm.label}</span>
+      <span className="team-count">{t.players_unit(teamCounts[tm.id]??0)}</span>
     </button>
   ));
   return(
@@ -131,6 +134,58 @@ function ChatBox({lang,msgs,input,setInput,onSend}){
   );
 }
 
+/* ══════════════ MINIMAP ══════════════ */
+function MiniMap({tilesRef,playersRef,myTeam,myIdRef,expanded,onToggle}){
+  const canvasRef=useRef(null);
+  const w=expanded?400:MINIMAP_W, h=expanded?300:MINIMAP_H;
+  const scaleX=w/GRID_W, scaleY=h/GRID_H;
+
+  useEffect(()=>{
+    let raf;
+    function draw(){
+      const cv=canvasRef.current; if(!cv) return;
+      const ctx=cv.getContext('2d');
+      const tiles=tilesRef.current;
+      const players=playersRef.current;
+      ctx.clearRect(0,0,w,h);
+
+      // 타일
+      if(tiles&&tiles.length){
+        for(let y=0;y<GRID_H;y++) for(let x=0;x<GRID_W;x++){
+          const tm=tiles[y]?.[x];
+          ctx.fillStyle=tm?TEAM_CSS[tm]:'#E8E4DC';
+          ctx.fillRect(x*scaleX,y*scaleY,scaleX,scaleY);
+        }
+      }
+
+      // 같은 팀 플레이어 점
+      if(players){
+        Object.values(players).forEach(p=>{
+          if(p.team!==myTeam) return;
+          const isMe=p.id===myIdRef.current;
+          const px=p.x/TILE_SIZE*scaleX, py=p.y/TILE_SIZE*scaleY;
+          ctx.beginPath();
+          ctx.arc(px,py,isMe?3.5:2.5,0,Math.PI*2);
+          ctx.fillStyle=isMe?'#fff':TEAM_CSS[myTeam];
+          ctx.fill();
+          if(isMe){ctx.strokeStyle=TEAM_CSS[myTeam];ctx.lineWidth=1.5;ctx.stroke();}
+        });
+      }
+
+      raf=requestAnimationFrame(draw);
+    }
+    draw();
+    return()=>cancelAnimationFrame(raf);
+  },[tilesRef,playersRef,myTeam,myIdRef,w,h,scaleX,scaleY]);
+
+  return(
+    <div className={`minimap-wrap${expanded?' expanded':''}`} onClick={onToggle} title="클릭하여 확대/축소">
+      <canvas ref={canvasRef} width={w} height={h} className="minimap-canvas"/>
+      <div className="minimap-icon">{expanded?'✕':'⊕'}</div>
+    </div>
+  );
+}
+
 /* ══════════════ GAME ══════════════ */
 function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs,chatInput,setChatInput}){
   const t=LANGS[lang]; const mobile=isMobile();
@@ -153,6 +208,12 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[killFeed,setKillFeed]=useState([]);
   const[showSettings,setShowSettings]=useState(false);
   const[leaderboard,setLeaderboard]=useState([]);
+  const[minimapExpanded,setMinimapExpanded]=useState(false);
+
+  // 미니맵용 ref (React re-render 없이 매 프레임 직접 읽음)
+  const minimapTilesRef=useRef([]);
+  const minimapPlayersRef=useRef({});
+  const myIdRef=useRef(null);
 
   // 리로드바 DOM 직접 조작 (React state 없이 → 60fps 완전 부드럽게)
   const reloadFillRef  = useRef(null);
@@ -366,7 +427,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     // init — 고스트 방지: GFX 전체 교체
     socket.on('init',({id,tiles,players,invincibleMs})=>{
       s.myId=id;
-      if(tiles)s.tiles=tiles;
+      myIdRef.current=id;
+      if(tiles){s.tiles=tiles;minimapTilesRef.current=s.tiles;}
       // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
         const e=playerGfxMap.current[pid]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[pid];
@@ -378,6 +440,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       s.players={}; s.bullets={};
       if(players)Object.entries(players).forEach(([pid,p])=>{s.players[pid]={...p,tx:p.x,ty:p.y};});
       if(s.players[id]&&invincibleMs){s.players[id].invincibleUntil=Date.now()+invincibleMs;}
+      minimapPlayersRef.current=s.players;
       buildTiles(tileLayer,s.tiles); calcScores(s.tiles);
       setPlayerCount(Object.keys(s.players).length);
     });
@@ -388,6 +451,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
         const e=playerGfxMap.current[p.id]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[p.id];
       }
       s.players[p.id]={...p,tx:p.x,ty:p.y};
+      minimapPlayersRef.current=s.players;
       setPlayerCount(Object.keys(s.players).length);
       addFeed(LANGS[langRef.current].join_msg(p.name));
     });
@@ -399,16 +463,17 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
         const e=playerGfxMap.current[id]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[id];
       }
       delete s.players[id];
+      minimapPlayersRef.current=s.players;
       setPlayerCount(Object.keys(s.players).length);
       if(name)addFeed(LANGS[langRef.current].leave_msg(name));
     });
 
-    socket.on('player_move',({id,x,y,invincibleUntil})=>{if(s.players[id]){s.players[id].tx=x;s.players[id].ty=y;if(invincibleUntil!==undefined)s.players[id].invincibleUntil=invincibleUntil;}});
+    socket.on('player_move',({id,x,y,invincibleUntil})=>{if(s.players[id]){s.players[id].tx=x;s.players[id].ty=y;if(invincibleUntil!==undefined)s.players[id].invincibleUntil=invincibleUntil;minimapPlayersRef.current=s.players;}});
     // [FIX] ox/oy = 스폰 원점 저장 → 시간 기반 위치 계산용
     socket.on('bullet_spawn',b=>{s.bullets[b.id]={...b,ox:b.x,oy:b.y,spawnTime:Date.now()};});
     socket.on('bullet_remove',({id})=>{delete s.bullets[id];});
-    socket.on('tile_paint',({x,y,team})=>{if(s.tiles[y]){s.tiles[y][x]=team;patchTile(x,y,team);calcScores(s.tiles);}});
-    socket.on('tiles_batch',batch=>{batch.forEach(({x,y,team})=>{if(s.tiles[y]){s.tiles[y][x]=team;patchTile(x,y,team);}});calcScores(s.tiles);});
+    socket.on('tile_paint',({x,y,team})=>{if(s.tiles[y]){s.tiles[y][x]=team;minimapTilesRef.current=s.tiles;patchTile(x,y,team);calcScores(s.tiles);}});
+    socket.on('tiles_batch',batch=>{batch.forEach(({x,y,team})=>{if(s.tiles[y]){s.tiles[y][x]=team;patchTile(x,y,team);}});minimapTilesRef.current=s.tiles;calcScores(s.tiles);});
     socket.on('player_eliminated',({killerId,killedId})=>{const kr=s.players[killerId],kd=s.players[killedId];if(kr&&kd)addFeed(LANGS[langRef.current].elim_msg(kr.name,kd.name));});
     socket.on('respawn',({x,y,invincibleMs})=>{const me=s.players[s.myId];if(me){me.x=x;me.y=y;me.tx=x;me.ty=y;if(invincibleMs)me.invincibleUntil=Date.now()+invincibleMs;}});
     // 서버 강제 위치 보정 (텔레포트 감지 시)
@@ -584,6 +649,16 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
       <div id="pixi-container" ref={containerRef}>
         <div className="kill-feed">{killFeed.map(k=><div key={k.id} className="kill-item">{k.msg}</div>)}</div>
 
+        {/* 미니맵 */}
+        <MiniMap
+          tilesRef={minimapTilesRef}
+          playersRef={minimapPlayersRef}
+          myTeam={playerTeam}
+          myIdRef={myIdRef}
+          expanded={minimapExpanded}
+          onToggle={()=>setMinimapExpanded(v=>!v)}
+        />
+
         {/* 개인 순위표 */}
         {leaderboard.length>0&&(
           <div className="leaderboard">
@@ -649,12 +724,26 @@ function AppRoot(){
   const socketRef=useRef(null);
   const[chatMsgs,setChatMsgs]=useState([]);
   const[chatInput,setChatInput]=useState('');
+  const[teamCounts,setTeamCounts]=useState({red:0,blue:0,green:0});
+
+  // 로비용 소켓 — 팀 인원수 수신용
+  useEffect(()=>{
+    const s=io(SERVER_URL,{transports:['websocket'],reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:1000,reconnectionDelayMax:5000});
+    socketRef.current=s;
+    s.on('team_counts',counts=>setTeamCounts(counts));
+    s.on('leaderboard',({teamCounts:tc})=>{if(tc)setTeamCounts(tc);});
+    return()=>{s.disconnect();socketRef.current=null;};
+  },[]);
 
   function setLang(l){localStorage.setItem('cz_lang',l);setLangState(l);}
-  function handleJoin(name,team){setPName(name);setPTeam(team);setPhase('game');}
+  function handleJoin(name,team){
+    // 로비 소켓 연결 해제 — Game이 새로 연결함
+    if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
+    setPName(name);setPTeam(team);setPhase('game');
+  }
 
   return phase==='lobby'
-    ?<Lobby onJoin={handleJoin} lang={lang} setLang={setLang}/>
+    ?<Lobby onJoin={handleJoin} lang={lang} setLang={setLang} teamCounts={teamCounts}/>
     :<Game playerName={pName} playerTeam={pTeam} lang={lang} setLang={setLang}
         socketRef={socketRef} chatMsgs={chatMsgs} setChatMsgs={setChatMsgs}
         chatInput={chatInput} setChatInput={setChatInput}/>;
