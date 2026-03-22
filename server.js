@@ -185,6 +185,7 @@ const JOIN_TIMEOUT_MS    = 8000;  // 접속 후 join 없으면 kick
 const MOVE_RATE_LIMIT    = 120;   // 초당 최대 move (60fps * 2배 여유)
 const SHOOT_RATE_LIMIT   = 2;     // 초당 최대 shoot (쿨다운 1초이므로 여유 1개)
 const CHAT_RATE_LIMIT    = 2;     // 초당 최대 채팅
+const PAINT_RATE_LIMIT   = 30;    // 초당 최대 paint_tile
 const PING_RATE_LIMIT    = 1;     // 초당 최대 ping_c
 const RATE_WINDOW_MS     = 1000;  // rate limit 집계 윈도우
 const MAX_VIOLATIONS     = 50;    // 위반 누적 시 kick (화이트해커 권고값)
@@ -199,32 +200,6 @@ const NAME_STRIP_RE      = /[<>"'&\/\\]/g;
 const CTRL_STRIP_RE      = /[\x00-\x1F\x7F]/g;
 
 const TEAMS = ['red', 'blue', 'green'];
-
-// ── 거점 시스템 ───────────────────────────────────────
-const STRONGHOLD_POSITIONS = [
-  { id: 'center', x: Math.floor(GRID_W / 2),    y: Math.floor(GRID_H / 2) },
-  { id: 'left',   x: Math.floor(GRID_W * 0.18), y: Math.floor(GRID_H * 0.25) },
-  { id: 'right',  x: Math.floor(GRID_W * 0.82), y: Math.floor(GRID_H * 0.75) },
-];
-const STRONGHOLD_RADIUS  = 3;    // 거점 판정 반경 (타일 단위)
-const BUFF_BULLET_MULT   = 1.3;  // 거점 점령 시 총알 속도 30% 증가
-const BUFF_SHOOT_CD_MULT = 0.75; // 거점 점령 시 쿨타임 25% 감소
-
-// ── 영역 세금 ─────────────────────────────────────────
-const TAX_THRESHOLD = 0.40; // 칠해진 타일 중 40% 초과 팀에 세금
-const TAX_INTERVAL  = 15000;// 15초마다 부과
-const TAX_TILES     = 4;    // 외곽 타일 제거 수
-
-// ── 팀 자동 배정: 인원이 가장 적은 팀 반환 ──────────────
-function getBalancedTeam(preferredTeam) {
-  const counts = { red: 0, blue: 0, green: 0 };
-  Object.values(players).forEach(p => { counts[p.team]++; });
-  const minCount = Math.min(...Object.values(counts));
-  // 선호 팀이 최소 인원이면 그대로, 아니면 최소 인원 팀 중 랜덤
-  if (counts[preferredTeam] === minCount) return preferredTeam;
-  const candidates = TEAMS.filter(t => counts[t] === minCount);
-  return candidates[Math.floor(Math.random() * candidates.length)];
-}
 
 // ── 보안 상태 ────────────────────────────────────────
 // IP별 접속 수 추적
@@ -260,7 +235,7 @@ function checkRate(socketId, key, limit) {
   return counters[key].count <= limit;
 }
 
-// 위반 처리 — MAX_VIOLATIONS 초과 시 kick
+// 위반 처리 — 로그만 남기고 kick은 명시적 임계값 초과 시만
 function addViolation(socket, reason) {
   const id = socket.id;
   if (!violations.has(id)) {
@@ -274,14 +249,8 @@ function addViolation(socket, reason) {
   const v = violations.get(id);
   v.count++;
   console.warn(`⚠️  위반 [${getIp(socket)}] ${reason} (누적 ${v.count})`);
-
-  if (v.count >= MAX_VIOLATIONS) {
-    console.warn(`🚫 위반 누적 kick: ${getIp(socket)} (${v.count}회)`);
-    clearInterval(v.decayTimer);
-    violations.delete(id);
-    socket.emit('kicked', { reason: 'Too many violations' });
-    socket.disconnect(true);
-  }
+  // kick은 명백한 악성 패킷(join 전 이벤트, 비정상 페이로드)에만 적용
+  // rate limit 오탐으로 정상 유저가 kick되는 문제 방지
 }
 
 // 페이로드 타입 검증 유틸
@@ -323,10 +292,11 @@ function loadTiles() {
 }
 
 function saveTiles() {
-  const data = JSON.stringify(tiles);
-  fs.writeFile(TILES_FILE, data, 'utf8', (err) => {
-    if (err) console.warn('⚠️ 타일 저장 실패:', err.message);
-  });
+  try {
+    fs.writeFileSync(TILES_FILE, JSON.stringify(tiles), 'utf8');
+  } catch (e) {
+    console.warn('⚠️ 타일 저장 실패:', e.message);
+  }
 }
 
 // ── 게임 상태 ────────────────────────────────────────
@@ -335,30 +305,79 @@ let players = {};
 let bullets = {};
 let bulletIdCounter = 0;
 
-// ── 타일 변경 배치 버퍼 ───────────────────────────────
-const tileBatch = [];
-let tileBatchFlushScheduled = false;
+// ── 라운드 상태 ───────────────────────────────────────
+let roundStartTime = Date.now();
+let roundNumber    = 1;
 
-function flushTileBatch() {
-  tileBatchFlushScheduled = false;
-  if (tileBatch.length === 0) return;
-  if (tileBatch.length === 1) {
-    io.emit('tile_paint', tileBatch[0]);
-  } else {
-    io.emit('tiles_batch', tileBatch.slice());
-  }
-  tileBatch.length = 0;
+function getRoundTimeLeft() {
+  return Math.max(0, ROUND_MS - (Date.now() - roundStartTime));
 }
 
+// 라운드 종료: 집계 → 브로드캐스트 → 개인 스탯 초기화
+function endRound() {
+  const teamScores = getScores();
+
+  // 개인 순위: 이번 라운드 획득 타일 수 기준
+  const playerRanks = Object.values(players)
+    .map(p => ({ id: p.id, name: p.name, team: p.team, gained: p.roundGained ?? 0 }))
+    .sort((a, b) => b.gained - a.gained);
+
+  // 팀 순위
+  const teamRanks = [...TEAMS]
+    .map(t => ({ team: t, tiles: teamScores[t] }))
+    .sort((a, b) => b.tiles - a.tiles);
+
+  io.emit('round_result', {
+    round:      roundNumber,
+    teamRanks,
+    playerRanks,
+  });
+
+  // 개인 라운드 스탯 초기화
+  Object.values(players).forEach(p => { p.roundGained = 0; });
+
+  roundNumber++;
+  roundStartTime = Date.now();
+}
+
+// 3분마다 라운드 종료
+setInterval(endRound, ROUND_MS);
+
+// 30초마다 자동 저장
+setInterval(saveTiles, SAVE_INTERVAL);
+
+// 서버 종료 시 즉시 저장 (Ctrl+C, nodemon 재시작 등)
+process.on('SIGINT',  () => { saveTiles(); process.exit(0); });
+process.on('SIGTERM', () => { saveTiles(); process.exit(0); });
+
+// ── 유틸 ─────────────────────────────────────────────
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function spawnPosition(team) {
+  const spawns = {
+    red:   { x: TILE_SIZE * 3,            y: TILE_SIZE * 3 },
+    blue:  { x: TILE_SIZE * (GRID_W - 3), y: TILE_SIZE * 3 },
+    green: { x: TILE_SIZE * (GRID_W / 2), y: TILE_SIZE * (GRID_H - 3) },
+  };
+  const s = spawns[team];
+  return {
+    x: clamp(s.x + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_W * TILE_SIZE - PLAYER_RADIUS),
+    y: clamp(s.y + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_H * TILE_SIZE - PLAYER_RADIUS),
+  };
+}
+
+function tileAt(x, y) {
+  if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) return undefined;
+  return tiles[y][x];
+}
+
+// [FIX-S1] paintTile: owner 옵션 파라미터로 개인 획득 타일 추적
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
   if (tiles[ty][tx] === team) return;
   tiles[ty][tx] = team;
-  tileBatch.push({ x: tx, y: ty, team });
-  if (!tileBatchFlushScheduled) {
-    tileBatchFlushScheduled = true;
-    setImmediate(flushTileBatch);
-  }
+  io.emit('tile_paint', { x: tx, y: ty, team });
+  // 개인 획득 타일 카운트 (중립→팀, 타팀→팀 모두 카운트)
   if (ownerId && players[ownerId]) {
     players[ownerId].roundGained = (players[ownerId].roundGained ?? 0) + 1;
   }
@@ -370,254 +389,26 @@ function getScores() {
   return s;
 }
 
-// ── 거점 상태 ─────────────────────────────────────────
-// { id, x, y, owner: 'red'|'blue'|'green'|null, progress: {red,blue,green} }
-let strongholds = STRONGHOLD_POSITIONS.map(s => ({ ...s, owner: null }));
-
-// 거점 점령 상태 계산 — 반경 내 타일 집계
-function calcStrongholdOwner(sh) {
-  const counts = { red: 0, blue: 0, green: 0, null: 0 };
-  for (let dy = -STRONGHOLD_RADIUS; dy <= STRONGHOLD_RADIUS; dy++) {
-    for (let dx = -STRONGHOLD_RADIUS; dx <= STRONGHOLD_RADIUS; dx++) {
-      if (dx * dx + dy * dy > STRONGHOLD_RADIUS * STRONGHOLD_RADIUS) continue;
-      const tx = sh.x + dx, ty = sh.y + dy;
-      if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) continue;
-      const t = tiles[ty][tx] ?? 'null';
-      counts[t] = (counts[t] ?? 0) + 1;
-    }
-  }
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  for (const team of TEAMS) {
-    if (counts[team] / total > 0.5) return team;
-  }
-  return null;
-}
-
-// 거점 상태 갱신 및 변경 시 브로드캐스트
-function updateStrongholds() {
-  let changed = false;
-  strongholds.forEach(sh => {
-    const newOwner = calcStrongholdOwner(sh);
-    if (newOwner !== sh.owner) {
-      sh.owner = newOwner;
-      changed = true;
-    }
-  });
-  if (changed) broadcastStrongholds();
-}
-
-function broadcastStrongholds() {
-  io.emit('strongholds', strongholds.map(sh => ({
-    id: sh.id, x: sh.x, y: sh.y, owner: sh.owner,
-  })));
-}
-
-// 특정 플레이어의 거점 버프 배율 반환
-function getPlayerBuff(p) {
-  const hasStronghold = strongholds.some(sh => sh.owner === p.team);
-  return {
-    bulletMult: hasStronghold ? BUFF_BULLET_MULT   : 1.0,
-    cdMult:     hasStronghold ? BUFF_SHOOT_CD_MULT : 1.0,
-  };
-}
-
-// ── 영역 세금 ─────────────────────────────────────────
-function applyTerritoryTax() {
-  const scores = getScores();
-  const paintedTotal = Object.values(scores).reduce((a, b) => a + b, 0);
-  if (paintedTotal === 0) return;
-
-  TEAMS.forEach(team => {
-    if (scores[team] / paintedTotal <= TAX_THRESHOLD) return;
-
-    // 해당 팀 외곽 타일 수집 (인접 8칸 중 아군 타일이 아닌 칸이 있는 타일 = 외곽)
-    const outerTiles = [];
-    for (let y = 0; y < GRID_H; y++) {
-      for (let x = 0; x < GRID_W; x++) {
-        if (tiles[y][x] !== team) continue;
-        const isOuter = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]].some(([dx, dy]) => {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || nx >= GRID_W || ny < 0 || ny >= GRID_H) return true;
-          return tiles[ny][nx] !== team;
-        });
-        if (isOuter) outerTiles.push({ x, y });
-      }
-    }
-    if (outerTiles.length === 0) return;
-
-    // 거점 주변 타일은 세금 대상 제외 (거점 사수 가치 보호)
-    const safeTiles = outerTiles.filter(({ x, y }) =>
-      !strongholds.some(sh => Math.hypot(x - sh.x, y - sh.y) <= STRONGHOLD_RADIUS)
-    );
-    const pool = safeTiles.length > 0 ? safeTiles : outerTiles;
-
-    // 랜덤 셔플 후 TAX_TILES개 제거
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    pool.slice(0, TAX_TILES).forEach(({ x, y }) => {
-      tiles[y][x] = null;
-      tileBatch.push({ x, y, team: null });
-    });
-    if (!tileBatchFlushScheduled) {
-      tileBatchFlushScheduled = true;
-      setImmediate(flushTileBatch);
-    }
-    console.log(`💸 영역 세금: ${team} -${Math.min(TAX_TILES, pool.length)}타일`);
-  });
-}
-
-// ── 라운드 상태 ───────────────────────────────────────
-let roundStartTime = Date.now();
-let roundNumber    = 1;
-
-function getRoundTimeLeft() {
-  return Math.max(0, ROUND_MS - (Date.now() - roundStartTime));
-}
-
-// 라운드 종료: 집계 → 브로드캐스트 → 맵 초기화 → 개인 스탯 초기화
-function endRound() {
-  const teamScores = getScores();
-
-  // 개인 순위: 이번 라운드 획득 타일 수 기준
-  // 후반 합류자(라운드 시작 후 60초 이상 지나서 접속) 표시
-  const playerRanks = Object.values(players)
-    .map(p => ({
-      id:        p.id,
-      name:      p.name,
-      team:      p.team,
-      gained:    p.roundGained ?? 0,
-      lateJoin:  p.joinedAt && (p.joinedAt - roundStartTime) > 60000,
-    }))
-    .sort((a, b) => b.gained - a.gained);
-
-  // 팀 순위
-  const teamRanks = [...TEAMS]
-    .map(t => ({ team: t, tiles: teamScores[t] }))
-    .sort((a, b) => b.tiles - a.tiles);
-
-  io.emit('round_result', {
-    round: roundNumber,
-    teamRanks,
-    playerRanks,
-  });
-
-  // 맵 초기화 전 배치 버퍼 플러시 (reset 후 stale 패킷 방지)
-  flushTileBatch();
-  tileBatch.length = 0;
-
-  // 맵 초기화
-  tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
-  io.emit('map_reset', { tiles });
-
-  // 거점 초기화
-  strongholds.forEach(sh => { sh.owner = null; });
-  broadcastStrongholds();
-
-  // 개인 라운드 스탯 초기화 + joinedAt 갱신
-  Object.values(players).forEach(p => {
-    p.roundGained = 0;
-    p.joinedAt    = Date.now();
-  });
-
-  roundNumber++;
-  roundStartTime = Date.now();
-}
-
-// 3분마다 라운드 종료
-setInterval(endRound, ROUND_MS);
-
-// 1초마다 라운드 남은 시간 브로드캐스트
-setInterval(() => {
-  io.emit('round_tick', { timeLeft: getRoundTimeLeft() });
-}, 1000);
-
-// 15초마다 영역 세금
-setInterval(applyTerritoryTax, TAX_INTERVAL);
-
-// 2초마다 거점 상태 갱신 (move 핸들러에서도 트리거하지만 주기적으로 보정)
-setInterval(updateStrongholds, 2000);
-
-// 30초마다 자동 저장
-setInterval(saveTiles, SAVE_INTERVAL);
-
-// 서버 종료 시 즉시 저장 (Ctrl+C, nodemon 재시작 등) — 종료 시점엔 동기 OK
-function saveTilesSync() {
-  try {
-    fs.writeFileSync(TILES_FILE, JSON.stringify(tiles), 'utf8');
-  } catch (e) {
-    console.warn('⚠️ 타일 종료 저장 실패:', e.message);
-  }
-}
-process.on('SIGINT',  () => { saveTilesSync(); process.exit(0); });
-process.on('SIGTERM', () => { saveTilesSync(); process.exit(0); });
-
-// ── 유틸 ─────────────────────────────────────────────
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-
-function spawnPosition(team) {
-  // 아군 타일이 있으면 해당 타일 중 무작위 위치 인근에 스폰
-  const teamTiles = [];
-  for (let y = 0; y < GRID_H; y++) {
-    for (let x = 0; x < GRID_W; x++) {
-      if (tiles[y][x] === team) teamTiles.push({ x, y });
-    }
-  }
-
-  let baseX, baseY;
-  if (teamTiles.length > 0) {
-    // 아군 타일 중 랜덤 선택
-    const pick = teamTiles[Math.floor(Math.random() * teamTiles.length)];
-    baseX = (pick.x + 0.5) * TILE_SIZE;
-    baseY = (pick.y + 0.5) * TILE_SIZE;
-  } else {
-    // 아군 타일이 0개면 초기 스폰 지점으로 폴백
-    const fallback = {
-      red:   { x: TILE_SIZE * 3,            y: TILE_SIZE * 3 },
-      blue:  { x: TILE_SIZE * (GRID_W - 3), y: TILE_SIZE * 3 },
-      green: { x: TILE_SIZE * (GRID_W / 2), y: TILE_SIZE * (GRID_H - 3) },
-    };
-    baseX = fallback[team].x;
-    baseY = fallback[team].y;
-  }
-
-  return {
-    x: clamp(baseX + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_W * TILE_SIZE - PLAYER_RADIUS),
-    y: clamp(baseY + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_H * TILE_SIZE - PLAYER_RADIUS),
-  };
-}
-
-function tileAt(x, y) {
-  if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) return undefined;
-  return tiles[y][x];
-}
-
-// ── 사망 시 타일 손실 (팀 전체 → 피격 플레이어 주변 개인 타일만) ──
-// 죽은 플레이어의 마지막 위치 주변 타일 우선 제거 → 팀 전체 피해 방지
-function loseTiles(team, deadX, deadY) {
+// ── 사망 시 타일 손실 ────────────────────────────────────
+function loseTiles(team) {
+  // 해당 팀 타일 좌표 수집
   const owned = [];
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
-      if (tiles[y][x] === team) {
-        const dist = Math.hypot(x - Math.floor(deadX / TILE_SIZE), y - Math.floor(deadY / TILE_SIZE));
-        owned.push({ x, y, dist });
-      }
+      if (tiles[y][x] === team) owned.push({ x, y });
     }
   }
   if (owned.length === 0) return;
 
-  // 가까운 타일 우선 정렬 후 손실 계산
-  owned.sort((a, b) => a.dist - b.dist);
   const loss = clamp(Math.round(owned.length * TILE_LOSS_RATIO), TILE_LOSS_MIN, TILE_LOSS_MAX);
-
+  // Fisher-Yates 셔플 후 앞 loss개 제거
+  for (let i = owned.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [owned[i], owned[j]] = [owned[j], owned[i]];
+  }
   owned.slice(0, loss).forEach(({ x, y }) => {
     tiles[y][x] = null;
-    tileBatch.push({ x, y, team: null });
-    if (!tileBatchFlushScheduled) {
-      tileBatchFlushScheduled = true;
-      setImmediate(flushTileBatch);
-    }
+    io.emit('tile_paint', { x, y, team: null });
   });
 }
 
@@ -634,40 +425,28 @@ function checkBulletCollisions() {
       return;
     }
 
-    // 레이캐스팅: 이전 위치 → 현재 위치 경로의 타일 칠하기 (아군 타일은 보호)
+    // 레이캐스팅: 이전 위치 → 현재 위치 경로의 타일 칠하기
     const prevX = b.prevX ?? b.x;
     const prevY = b.prevY ?? b.y;
     const tilesOnPath = getTilesOnSegment(prevX, prevY, b.x, b.y);
     tilesOnPath.forEach(({ tx, ty }) => {
-      if (tileAt(tx, ty) !== undefined && tileAt(tx, ty) !== b.team) {
-        paintTile(tx, ty, b.team, b.owner);
-      }
+      if (tileAt(tx, ty) !== undefined) paintTile(tx, ty, b.team, b.owner);
     });
 
-    // 플레이어 충돌 — tunneling 방지: 이전→현재 위치 경로 선분으로 판정
+    // 플레이어 충돌 (다른 팀, 무적 제외)
     Object.entries(players).forEach(([pid, p]) => {
       if (toRemove.has(bid)) return;
       if (pid === b.owner) return;
       if (p.team === b.team) return;
+      // 무적 상태면 충돌 무시
       if (p.invincibleUntil && Date.now() < p.invincibleUntil) return;
-
-      // 현재 위치 충돌
-      const distCur = Math.hypot(p.x - b.x, p.y - b.y);
-      // 이전 위치 기준 선분과 플레이어 중심 사이의 최단 거리 계산 (tunneling 방지)
-      const bpx = b.prevX ?? b.x, bpy = b.prevY ?? b.y;
-      const ex = b.x - bpx, ey = b.y - bpy;
-      const lenSq = ex * ex + ey * ey;
-      let distSweep = distCur;
-      if (lenSq > 0) {
-        const t = Math.max(0, Math.min(1, ((p.x - bpx) * ex + (p.y - bpy) * ey) / lenSq));
-        const cx = bpx + t * ex, cy = bpy + t * ey;
-        distSweep = Math.hypot(p.x - cx, p.y - cy);
-      }
-
-      if (Math.min(distCur, distSweep) < PLAYER_RADIUS + BULLET_RADIUS) {
-        loseTiles(p.team, p.x, p.y);
+      const dist = Math.hypot(p.x - b.x, p.y - b.y);
+      if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
+        // 타일 손실 적용
+        loseTiles(p.team);
         const spawn = spawnPosition(p.team);
         p.x = spawn.x; p.y = spawn.y;
+        // 리스폰 시 무적 부여
         p.invincibleUntil = Date.now() + INVINCIBLE_MS;
         io.to(pid).emit('respawn', { x: p.x, y: p.y, invincibleMs: INVINCIBLE_MS });
         io.emit('player_move', { id: pid, x: p.x, y: p.y });
@@ -766,13 +545,7 @@ setInterval(() => {
     }))
     .sort((a, b) => b.gained - a.gained);
 
-  // 팀별 버프 현황 (거점 점령 팀)
-  const teamBuffs = {};
-  TEAMS.forEach(t => {
-    teamBuffs[t] = strongholds.some(sh => sh.owner === t);
-  });
-
-  io.emit('leaderboard', { leaderboard, teamTiles, teamBuffs });
+  io.emit('leaderboard', { leaderboard, teamTiles });
 }, 2000);
 
 // ── Socket.io 이벤트 ──────────────────────────────────
@@ -824,16 +597,15 @@ io.on('connection', (socket) => {
     if (!isSafeStr(name ?? '', 32)) { addViolation(socket, 'join: invalid name'); return; }
     if (!isSafeStr(team ?? '', 10)) { addViolation(socket, 'join: invalid team'); return; }
 
-    const assignedTeam = getBalancedTeam(TEAMS.includes(team) ? team : 'blue');
+    const assignedTeam = TEAMS.includes(team) ? team : 'blue';
     const isReconnect  = !!players[socket.id];
 
     // 재연결 시 위치·라운드 점수 유지, 신규 접속만 스폰 위치 지정
-    let spawnX, spawnY, prevGained = 0, prevJoinedAt = Date.now();
+    let spawnX, spawnY, prevGained = 0;
     if (isReconnect) {
-      spawnX       = players[socket.id].x;
-      spawnY       = players[socket.id].y;
-      prevGained   = players[socket.id].roundGained ?? 0;
-      prevJoinedAt = players[socket.id].joinedAt ?? Date.now(); // 덮어쓰기 전에 저장
+      spawnX      = players[socket.id].x;
+      spawnY      = players[socket.id].y;
+      prevGained  = players[socket.id].roundGained ?? 0;
     } else {
       const sp = spawnPosition(assignedTeam);
       spawnX = sp.x; spawnY = sp.y;
@@ -848,7 +620,6 @@ io.on('connection', (socket) => {
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
       roundGained:     prevGained,
-      joinedAt:        prevJoinedAt,
     };
 
     socket.emit('init', {
@@ -857,7 +628,6 @@ io.on('connection', (socket) => {
       invincibleMs:  INVINCIBLE_MS,
       round:         roundNumber,
       roundTimeLeft: getRoundTimeLeft(),
-      strongholds:   strongholds.map(sh => ({ id: sh.id, x: sh.x, y: sh.y, owner: sh.owner })),
       players: Object.fromEntries(
         Object.entries(players).map(([id, p]) => [id, sanitizePlayer(p)])
       ),
@@ -911,13 +681,40 @@ io.on('connection', (socket) => {
     const ty = Math.floor(p.y / TILE_SIZE);
     paintTile(tx, ty, p.team, socket.id);
 
-    // 거점 영향권 내 이동 시 즉시 갱신
-    const nearStronghold = strongholds.some(sh =>
-      Math.hypot(tx - sh.x, ty - sh.y) <= STRONGHOLD_RADIUS + 1
-    );
-    if (nearStronghold) updateStrongholds();
-
     socket.broadcast.emit('player_move', { id: socket.id, x: p.x, y: p.y, invincibleUntil: p.invincibleUntil ?? 0 });
+  });
+
+  // ── paint_tile ──
+  socket.on('paint_tile', (payload) => {
+    const p = players[socket.id];
+    if (!p) return;
+
+    if (!checkRate(socket.id, 'paint', PAINT_RATE_LIMIT)) {
+      addViolation(socket, 'paint_tile: rate limit');
+      return;
+    }
+
+    if (!payload || !isFiniteNum(payload.x) || !isFiniteNum(payload.y)) {
+      addViolation(socket, 'paint_tile: invalid payload');
+      return;
+    }
+
+    const tx = Math.floor(payload.x);
+    const ty = Math.floor(payload.y);
+    if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) {
+      addViolation(socket, 'paint_tile: out of bounds');
+      return;
+    }
+
+    // 원격 타일 페인팅 방지: 플레이어 현재 위치 기준 인접 1칸만 허용
+    const ptx = Math.floor(p.x / TILE_SIZE);
+    const pty = Math.floor(p.y / TILE_SIZE);
+    if (Math.abs(tx - ptx) > 1 || Math.abs(ty - pty) > 1) {
+      addViolation(socket, `paint_tile: remote paint (${tx},${ty}) player@(${ptx},${pty})`);
+      return;
+    }
+
+    paintTile(tx, ty, p.team, socket.id);
   });
 
   // ── shoot ──
@@ -934,11 +731,9 @@ io.on('connection', (socket) => {
     // 무적 중 발사 불가
     if (p.invincibleUntil && Date.now() < p.invincibleUntil) return;
 
-    // 쿨다운 (거점 버프 적용)
+    // 쿨다운
     const now = Date.now();
-    const { bulletMult, cdMult } = getPlayerBuff(p);
-    const effectiveCd = Math.floor(SHOOT_COOLDOWN * cdMult);
-    if (now - p.lastShot < effectiveCd) return;
+    if (now - p.lastShot < SHOOT_COOLDOWN) return;
 
     // 페이로드 검증
     if (!payload || !isFiniteNum(payload.dx) || !isFiniteNum(payload.dy)) {
@@ -950,9 +745,8 @@ io.on('connection', (socket) => {
     if (len === 0) return;
 
     p.lastShot = now;
-    const speed = BULLET_SPEED * bulletMult;
-    const ndx = (payload.dx / len) * speed;
-    const ndy = (payload.dy / len) * speed;
+    const ndx = (payload.dx / len) * BULLET_SPEED;
+    const ndy = (payload.dy / len) * BULLET_SPEED;
 
     const id = `b_${bulletIdCounter++}`;
     bullets[id] = {
