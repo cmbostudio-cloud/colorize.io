@@ -155,8 +155,9 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   const[leaderboard,setLeaderboard]=useState([]);
 
   // 리로드바 DOM 직접 조작 (React state 없이 → 60fps 완전 부드럽게)
-  const reloadFillRef  = useRef(null); // .reload-bar-fill 엘리먼트
-  const reloadLabelRef = useRef(null); // .reload-bar-label 엘리먼트
+  const reloadFillRef  = useRef(null);
+  const reloadLabelRef = useRef(null);
+  const topPlayerIdRef = useRef(null); // 1위 플레이어 ID (왕관 표시용)
 
   // 채팅 말풍선: { [playerId]: { container, text, timer } }
   const chatBubbles = useRef({});
@@ -263,8 +264,30 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     delete chatBubbles.current[playerId];
   }
 
+  function getCrownTex(app){
+    const key='crown'; if(texCache.current[key])return texCache.current[key];
+    const g=new PIXI.Graphics();
+    // 왕관 몸통
+    g.beginFill(0xFFD700);
+    g.moveTo(-9, 6); g.lineTo(-9,-2); g.lineTo(-5, 2); g.lineTo(0,-5);
+    g.lineTo(5, 2);  g.lineTo(9,-2);  g.lineTo(9, 6);  g.closePath();
+    g.endFill();
+    // 테두리
+    g.lineStyle(1,0xFFA500,1);
+    g.moveTo(-9, 6); g.lineTo(-9,-2); g.lineTo(-5, 2); g.lineTo(0,-5);
+    g.lineTo(5, 2);  g.lineTo(9,-2);  g.lineTo(9, 6);  g.closePath();
+    g.lineStyle(0);
+    // 꼭짓점 원형 장식
+    g.beginFill(0xFFA500); g.drawCircle(-9,-2,1.8); g.endFill();
+    g.beginFill(0xFFA500); g.drawCircle(0,-5,1.8);  g.endFill();
+    g.beginFill(0xFFA500); g.drawCircle(9,-2,1.8);  g.endFill();
+    const tex=app.renderer.generateTexture(g,{resolution:2}); g.destroy();
+    texCache.current[key]=tex; return tex;
+  }
+
   function renderPlayers(app,layer,players,myId,now){
     const alive=new Set(Object.keys(players));
+    const topId=topPlayerIdRef.current;
     Object.keys(playerGfxMap.current).forEach(id=>{
       if(!alive.has(id)){const e=playerGfxMap.current[id];if(e.c.parent)e.c.parent.removeChild(e.c);e.c.destroy({children:true});delete playerGfxMap.current[id];}
     });
@@ -274,13 +297,17 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
         const sp=new PIXI.Sprite(getPlayerTex(app,color,isMe)); sp.anchor.set(0.5);
         const txt=new PIXI.Text(p.name,{fontFamily:'Nunito',fontSize:11,fontWeight:'800',fill:0xFFFFFF,stroke:0x000000,strokeThickness:2,align:'center'});
         txt.anchor.set(0.5,1); txt.y=-(PLAYER_RADIUS+4);
-        const c=new PIXI.Container(); c.addChild(sp,txt); layer.addChild(c);
-        playerGfxMap.current[id]={c,sprite:sp,txt,color,isMe};
+        const crown=new PIXI.Sprite(getCrownTex(app)); crown.anchor.set(0.5,1);
+        crown.y=-(PLAYER_RADIUS+18); crown.visible=false;
+        const c=new PIXI.Container(); c.addChild(sp,txt,crown); layer.addChild(c);
+        playerGfxMap.current[id]={c,sprite:sp,txt,crown,color,isMe};
       }
       const e=playerGfxMap.current[id];
       if(e.color!==color||e.isMe!==isMe){e.sprite.texture=getPlayerTex(app,color,isMe);e.color=color;e.isMe=isMe;}
       e.txt.text=p.name; e.c.x=p.x; e.c.y=p.y;
-      // 무적 깜빡임: 남은 시간 기준 sin파로 alpha 조절
+      // 1위 왕관 표시
+      e.crown.visible = (id===topId);
+      // 무적 깜빡임
       const invLeft=p.invincibleUntil?p.invincibleUntil-now:0;
       if(invLeft>0){e.c.alpha=0.45+0.45*Math.abs(Math.sin(now/120));}
       else{e.c.alpha=1;}
@@ -389,6 +416,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     // 개인 순위표
     socket.on('leaderboard',({leaderboard,teamTiles})=>{
       setLeaderboard(leaderboard);
+      topPlayerIdRef.current = leaderboard[0]?.id ?? null;
       if(teamTiles) setScores({red:teamTiles.red??0,blue:teamTiles.blue??0,green:teamTiles.green??0});
     });
     socket.on('chat',({id,name,team,text})=>{
