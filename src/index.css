@@ -89,6 +89,7 @@ html, body, #root {
 .hud-player span { font-weight:900; color:var(--text); }
 .player-count { font-size:clamp(0.58rem,1.4vw,0.7rem); font-weight:800; color:var(--muted); }
 .hud-settings-btn { background:none; border:none; font-size:clamp(0.9rem,2vw,1.05rem); cursor:pointer; padding:2px; transition:transform 0.25s; }
+.hud-timer { font-size:clamp(0.72rem,1.8vw,0.88rem); font-weight:700; letter-spacing:0.04em; flex-shrink:0; transition:color 0.3s; }
 .hud-settings-btn:hover { transform:rotate(40deg); }
 @media (max-width:480px) and (orientation:portrait) { .hud-player,.player-count { display:none; } }
 
