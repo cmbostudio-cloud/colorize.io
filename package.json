@@ -1,6 +1,5 @@
 {
-  "name": "daubs.io
-",
+  "name": "daubs.io",
   "version": "1.0.0",
   "description": "colorize.io - 땅따먹기 게임",
   "main": "server.js",
