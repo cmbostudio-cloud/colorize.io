@@ -6,10 +6,10 @@ import { io } from 'socket.io-client';
 
 /* ══════════════ I18N ══════════════ */
 const LANGS = {
-  en: { code:'en', flag:'🇺🇸', label:'English', nickname:'Nickname', nickname_ph:'Enter your name', team:'Choose Team', red:'Red', blue:'Blue', green:'Green', start:'Play →', settings:'Settings', language:'Language', save:'Save', reload:'RELOAD', ping:'ping', move_hint:'Move', shoot_hint:'Hold 🖱 to Shoot', joystick_move:'MOVE', joystick_shoot:'SHOOT', chat_ph:'Press Enter to chat', chat_send:'Send', join_msg:n=>`🎮 ${n} joined`, leave_msg:n=>`👋 ${n} left`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'Red',blue:'Blue',green:'Green'} },
-  ko: { code:'ko', flag:'🇰🇷', label:'한국어', nickname:'닉네임', nickname_ph:'이름을 입력하세요', team:'팀 선택', red:'레드', blue:'블루', green:'그린', start:'게임 시작 →', settings:'설정', language:'언어', save:'저장', reload:'장전 중', ping:'ping', move_hint:'이동', shoot_hint:'🖱 꾹 누르면 발사', joystick_move:'이동', joystick_shoot:'발사', chat_ph:'Enter로 채팅', chat_send:'전송', join_msg:n=>`🎮 ${n} 입장`, leave_msg:n=>`👋 ${n} 퇴장`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'레드팀',blue:'블루팀',green:'그린팀'} },
-  ja: { code:'ja', flag:'🇯🇵', label:'日本語', nickname:'ニックネーム', nickname_ph:'名前を入力', team:'チーム選択', red:'レッド', blue:'ブルー', green:'グリーン', start:'プレイ →', settings:'設定', language:'言語', save:'保存', reload:'リロード', ping:'ping', move_hint:'移動', shoot_hint:'🖱 長押しで射撃', joystick_move:'移動', joystick_shoot:'射撃', chat_ph:'Enterでチャット', chat_send:'送信', join_msg:n=>`🎮 ${n} 参加`, leave_msg:n=>`👋 ${n} 退出`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'レッド',blue:'ブルー',green:'グリーン'} },
-  zh: { code:'zh', flag:'🇨🇳', label:'中文', nickname:'昵称', nickname_ph:'输入你的名字', team:'选择队伍', red:'红队', blue:'蓝队', green:'绿队', start:'开始游戏 →', settings:'设置', language:'语言', save:'保存', reload:'装弹中', ping:'延迟', move_hint:'移动', shoot_hint:'🖱 长按射击', joystick_move:'移动', joystick_shoot:'射击', chat_ph:'按Enter聊天', chat_send:'发送', join_msg:n=>`🎮 ${n} 加入`, leave_msg:n=>`👋 ${n} 离开`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'红队',blue:'蓝队',green:'绿队'} },
+  en: { code:'en', flag:'🇺🇸', label:'English', nickname:'Nickname', nickname_ph:'Enter your name', team:'Choose Team', red:'Red', blue:'Blue', green:'Green', start:'Play →', settings:'Settings', language:'Language', save:'Save', reload:'RELOAD', reconnecting:'🔄 Reconnecting', ping:'ping', move_hint:'Move', shoot_hint:'Hold 🖱 to Shoot', joystick_move:'MOVE', joystick_shoot:'SHOOT', chat_ph:'Press Enter to chat', chat_send:'Send', join_msg:n=>`🎮 ${n} joined`, leave_msg:n=>`👋 ${n} left`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'Red',blue:'Blue',green:'Green'}, leaderboard_title:'🏆 Ranking', tiles_unit:n=>`${n} tiles` },
+  ko: { code:'ko', flag:'🇰🇷', label:'한국어', nickname:'닉네임', nickname_ph:'이름을 입력하세요', team:'팀 선택', red:'레드', blue:'블루', green:'그린', start:'게임 시작 →', settings:'설정', language:'언어', save:'저장', reload:'장전 중', reconnecting:'🔄 재연결 중', ping:'ping', move_hint:'이동', shoot_hint:'🖱 꾹 누르면 발사', joystick_move:'이동', joystick_shoot:'발사', chat_ph:'Enter로 채팅', chat_send:'전송', join_msg:n=>`🎮 ${n} 입장`, leave_msg:n=>`👋 ${n} 퇴장`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'레드팀',blue:'블루팀',green:'그린팀'}, leaderboard_title:'🏆 순위', tiles_unit:n=>`${n}칸` },
+  ja: { code:'ja', flag:'🇯🇵', label:'日本語', nickname:'ニックネーム', nickname_ph:'名前を入力', team:'チーム選択', red:'レッド', blue:'ブルー', green:'グリーン', start:'プレイ →', settings:'設定', language:'言語', save:'保存', reload:'リロード', reconnecting:'🔄 再接続中', ping:'ping', move_hint:'移動', shoot_hint:'🖱 長押しで射撃', joystick_move:'移動', joystick_shoot:'射撃', chat_ph:'Enterでチャット', chat_send:'送信', join_msg:n=>`🎮 ${n} 参加`, leave_msg:n=>`👋 ${n} 退出`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'レッド',blue:'ブルー',green:'グリーン'}, leaderboard_title:'🏆 ランキング', tiles_unit:n=>`${n}マス` },
+  zh: { code:'zh', flag:'🇨🇳', label:'中文', nickname:'昵称', nickname_ph:'输入你的名字', team:'选择队伍', red:'红队', blue:'蓝队', green:'绿队', start:'开始游戏 →', settings:'设置', language:'语言', save:'保存', reload:'装弹中', reconnecting:'🔄 重新连接', ping:'延迟', move_hint:'移动', shoot_hint:'🖱 长按射击', joystick_move:'移动', joystick_shoot:'射击', chat_ph:'按Enter聊天', chat_send:'发送', join_msg:n=>`🎮 ${n} 加入`, leave_msg:n=>`👋 ${n} 离开`, elim_msg:(a,b)=>`💥 ${a} → ${b}`, team_names:{red:'红队',blue:'蓝队',green:'绿队'}, leaderboard_title:'🏆 排行榜', tiles_unit:n=>`${n}格` },
 };
 
 /* ══════════════ CONSTANTS ══════════════ */
@@ -478,7 +478,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         }
         if(reloadLabelRef.current){
           const invLeft=me.invincibleUntil?Math.ceil((me.invincibleUntil-now)/1000):0;
-          reloadLabelRef.current.textContent=!connected?'🔄 재연결 중':invincible?`🛡️ ${invLeft}s`:ready?'🎨':langRef.current==='ko'?'장전 중':langRef.current==='ja'?'リロード':langRef.current==='zh'?'装弹中':'RELOAD';
+          reloadLabelRef.current.textContent=!connected?LANGS[langRef.current].reconnecting:invincible?`🛡️ ${invLeft}s`:ready?'🎨':LANGS[langRef.current].reload;
         }
 
         // 발사 (연결됨 + 장전 완료 + 무적 해제 시에만)
@@ -559,7 +559,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
         {/* 개인 순위표 */}
         {leaderboard.length>0&&(
           <div className="leaderboard">
-            <div className="leaderboard-title">🏆 순위</div>
+            <div className="leaderboard-title">{t.leaderboard_title}</div>
             {leaderboard.slice(0,8).map((p,i)=>{
               const isMe=socketRef.current&&p.id===socketRef.current.id;
               return(
@@ -567,7 +567,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
                   <div className="leaderboard-rank">{['🥇','🥈','🥉'][i]??i+1}</div>
                   <div className="leaderboard-dot" style={{background:TEAM_CSS[p.team]??'#999'}}/>
                   <div className={`leaderboard-name${isMe?' is-me':''}`}>{p.name}</div>
-                  <div className="leaderboard-score">{p.tiles}칸</div>
+                  <div className="leaderboard-score">{t.tiles_unit(p.tiles)}</div>
                 </div>
               );
             })}
