@@ -334,9 +334,9 @@ function roundTimeLeft() {
   return Math.max(0, round.endsAt - Date.now());
 }
 
-// 레벨 계산 (xp 기반): lv = floor(sqrt(xp / 10))
+// 레벨 계산 (xp 기반): lv = max(1, floor(sqrt(xp / 10)))
 function calcLevel(xp) {
-  return Math.floor(Math.sqrt((xp ?? 0) / 10));
+  return Math.max(1, Math.floor(Math.sqrt((xp ?? 0) / 10)));
 }
 
 // XP → 다음 레벨까지 필요 XP
@@ -401,10 +401,15 @@ function endRound() {
   }, ROUND_BREAK_MS);
 }
 
-// 라운드 타이머 틱 (1초마다)
+// 라운드 타이머 틱 (1초마다) — 중복 실행 방지 플래그 포함
+let endingRound = false;
 setInterval(() => {
-  if (round.phase !== 'playing') return;
-  if (Date.now() >= round.endsAt) endRound();
+  if (round.phase !== 'playing' || endingRound) return;
+  if (Date.now() >= round.endsAt) {
+    endingRound = true;
+    endRound();
+    setTimeout(() => { endingRound = false; }, ROUND_BREAK_MS + 5000);
+  }
 }, 1000);
 
 // 30초마다 자동 저장
