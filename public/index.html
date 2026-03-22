@@ -433,7 +433,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   function renderPlayers(app,layer,players,myId){
     const alive=new Set(Object.keys(players));
     Object.keys(playerGfxMap.current).forEach(id=>{
-      if(!alive.has(id)){const e=playerGfxMap.current[id];layer.removeChild(e.c);e.c.destroy({children:false});delete playerGfxMap.current[id];}
+      if(!alive.has(id)){const e=playerGfxMap.current[id];if(e.c.parent)e.c.parent.removeChild(e.c);e.c.destroy({children:true});delete playerGfxMap.current[id];}
     });
     Object.entries(players).forEach(([id,p])=>{
       const color=TEAM_COLORS[p.team]??0xAAAAAA; const isMe=id===myId;
@@ -454,7 +454,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   function renderBullets(app,layer,bullets){
     const alive=new Set(Object.keys(bullets)); const now=Date.now();
     Object.keys(bulletGfxMap.current).forEach(id=>{
-      if(!alive.has(id)){const s=bulletGfxMap.current[id];layer.removeChild(s);s.destroy();delete bulletGfxMap.current[id];}
+      if(!alive.has(id)){const sp=bulletGfxMap.current[id];if(sp.parent)sp.parent.removeChild(sp);sp.destroy();delete bulletGfxMap.current[id];}
     });
     Object.entries(bullets).forEach(([id,b])=>{
       const age=now-b.spawnTime;
@@ -488,7 +488,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       if(tiles)s.tiles=tiles;
       // 기존 GFX 전부 제거
       Object.keys(playerGfxMap.current).forEach(pid=>{
-        const e=playerGfxMap.current[pid]; playerLayer.removeChild(e.c); e.c.destroy({children:false}); delete playerGfxMap.current[pid];
+        const e=playerGfxMap.current[pid]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[pid];
       });
       s.players={};
       if(players)Object.entries(players).forEach(([pid,p])=>{s.players[pid]={...p,tx:p.x,ty:p.y};});
@@ -499,7 +499,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     // player_join — 고스트 방지: 중복 GFX 제거 후 재등록
     socket.on('player_join',p=>{
       if(playerGfxMap.current[p.id]){
-        const e=playerGfxMap.current[p.id]; playerLayer.removeChild(e.c); e.c.destroy({children:false}); delete playerGfxMap.current[p.id];
+        const e=playerGfxMap.current[p.id]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[p.id];
       }
       s.players[p.id]={...p,tx:p.x,ty:p.y};
       setPlayerCount(Object.keys(s.players).length);
@@ -510,7 +510,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     socket.on('player_leave',({id})=>{
       const name=s.players[id]?.name;
       if(playerGfxMap.current[id]){
-        const e=playerGfxMap.current[id]; playerLayer.removeChild(e.c); e.c.destroy({children:false}); delete playerGfxMap.current[id];
+        const e=playerGfxMap.current[id]; if(e.c.parent)e.c.parent.removeChild(e.c); e.c.destroy({children:true}); delete playerGfxMap.current[id];
       }
       delete s.players[id];
       setPlayerCount(Object.keys(s.players).length);
@@ -524,11 +524,12 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     socket.on('tiles_batch',batch=>{batch.forEach(({x,y,team})=>{if(s.tiles[y]){s.tiles[y][x]=team;patchTile(x,y,team);}});calcScores(s.tiles);});
     socket.on('player_eliminated',({killerId,killedId})=>{const kr=s.players[killerId],kd=s.players[killedId];if(kr&&kd)addFeed(LANGS[langRef.current].elim_msg(kr.name,kd.name));});
     socket.on('respawn',({x,y})=>{const me=s.players[s.myId];if(me){me.x=x;me.y=y;me.tx=x;me.ty=y;}});
-    socket.on('chat',({name,team,text})=>{
+    socket.on('chat',({id,name,team,text})=>{
       const color=TEAM_CSS[team]??'#999';
       setChatMsgs(msgs=>[...msgs.slice(-49),{id:Date.now()+Math.random(),name,color,text}]);
       // 해당 플레이어 찾아서 말풍선 표시
-      const sender=Object.values(s.players).find(p=>p.name===name&&p.team===team);
+      // [FIX] id 기반 정확한 매칭 (동명이인 버그 수정)
+      const sender=id&&s.players[id]?s.players[id]:Object.values(s.players).find(p=>p.name===name&&p.team===team);
       if(sender){
         const teamHex=TEAM_COLORS[team]??0x5C9EFF;
         showChatBubble(playerLayer,sender.id,text,teamHex);
@@ -544,7 +545,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
     window.addEventListener('keydown',onKD); window.addEventListener('keyup',onKU);
 
     const cv=app.view;
-    const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.left)*(cv.width/r.width),y:(e.clientY-r.top)*(cv.height/r.height)};};
+    // [FIX] mousePos를 논리픽셀(CSS픽셀) 기준으로 저장
+const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.left)*app.screen.width/r.width,y:(e.clientY-r.top)*app.screen.height/r.height};};
     const onMD=()=>{s.mouseDown=true;}; const onMU=()=>{s.mouseDown=false;};
     cv.addEventListener('mousemove',onMM); cv.addEventListener('mousedown',onMD);
     window.addEventListener('mouseup',onMU);
@@ -580,9 +582,11 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
 
         // 발사 (장전 완료 시에만)
         let shoot=false,sdx=0,sdy=0;
-        if(!mobile&&s.mouseDown){const sx=me.x-s.camX,sy=me.y-s.camY;const len=Math.hypot(s.mousePos.x-sx,s.mousePos.y-sy)||1;sdx=((s.mousePos.x-sx)/len)*BULLET_SPEED;sdy=((s.mousePos.y-sy)/len)*BULLET_SPEED;shoot=true;}
+        // [FIX] 마우스 → 월드 좌표 변환 후 발사 방향 계산
+        if(!mobile&&s.mouseDown){const mwx=s.mousePos.x+s.camX,mwy=s.mousePos.y+s.camY;const len=Math.hypot(mwx-me.x,mwy-me.y)||1;sdx=((mwx-me.x)/len)*BULLET_SPEED;sdy=((mwy-me.y)/len)*BULLET_SPEED;shoot=true;}
         else if(mobile){const sv=shootVec.current;if(sv.active){const len=Math.hypot(sv.x,sv.y)||1;sdx=(sv.x/len)*BULLET_SPEED;sdy=(sv.y/len)*BULLET_SPEED;shoot=true;}}
-        if(shoot&&ready){s.lastShot=now;socket.emit('shoot',{dx:sdx,dy:sdy});}
+        // [FIX] 가만히 있을 때도 발사 직전 위치를 서버에 동기화 (총알 spawn 위치 오류 방지)
+        if(shoot&&ready){s.lastShot=now;socket.emit('move',{x:me.x,y:me.y});socket.emit('shoot',{dx:sdx,dy:sdy});}
 
         s.camX=lerp(s.camX,me.x-app.screen.width/2,0.1);
         s.camY=lerp(s.camY,me.y-app.screen.height/2,0.1);
@@ -594,7 +598,8 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
       tileLayer.y=playerLayer.y=bulletLayer.y=-s.camY;
 
       Object.entries(s.players).forEach(([id,p])=>{if(id!==s.myId){p.x=lerp(p.x??p.tx,p.tx,0.18);p.y=lerp(p.y??p.ty,p.ty,0.18);}});
-      Object.entries(s.bullets).forEach(([id,b])=>{b.x+=b.dx;b.y+=b.dy;if(Date.now()-b.spawnTime>=BULLET_LIFETIME||b.x<0||b.x>GRID_W*TILE_SIZE||b.y<0||b.y>GRID_H*TILE_SIZE)delete s.bullets[id];});
+      // [FIX] spawnTime 미존재 방어 + 경계 처리 강화
+      Object.entries(s.bullets).forEach(([id,b])=>{b.x+=b.dx;b.y+=b.dy;const age=b.spawnTime?Date.now()-b.spawnTime:0;if(age>=BULLET_LIFETIME||b.x<-TILE_SIZE||b.x>(GRID_W+1)*TILE_SIZE||b.y<-TILE_SIZE||b.y>(GRID_H+1)*TILE_SIZE)delete s.bullets[id];});
       if(rebuildFlag.current)buildTiles(tileLayer,s.tiles);
       renderPlayers(app,playerLayer,s.players,s.myId);
       renderBullets(app,bulletLayer,s.bullets);
