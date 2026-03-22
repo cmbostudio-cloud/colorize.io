@@ -163,8 +163,8 @@ app.get('/manifest.json', (req, res) => {
 });
 
 // ── 상수 ────────────────────────────────────────────
-const GRID_W        = 40;
-const GRID_H        = 30;
+const GRID_W        = 80;
+const GRID_H        = 60;
 const TILE_SIZE     = 40;
 const MOVE_SPEED    = 3;
 const BULLET_SPEED  = 12;
@@ -526,16 +526,20 @@ setInterval(() => {
   const teamTiles = { red: 0, blue: 0, green: 0 };
   tiles.forEach(row => row.forEach(t => { if (t) teamTiles[t]++; }));
 
+  // 팀별 인원수
+  const teamCounts = { red: 0, blue: 0, green: 0 };
+  Object.values(players).forEach(p => { if (teamCounts[p.team] !== undefined) teamCounts[p.team]++; });
+
   const leaderboard = Object.values(players)
     .map(p => ({
       id:           p.id,
       name:         p.name,
       team:         p.team,
-      tiles:        p.personalTiles ?? 0,  // 개인 기여 타일 수
+      tiles:        p.personalTiles ?? 0,
     }))
     .sort((a, b) => b.tiles - a.tiles);
 
-  io.emit('leaderboard', { leaderboard, teamTiles });
+  io.emit('leaderboard', { leaderboard, teamTiles, teamCounts });
 }, 2000);
 
 // ── Socket.io 이벤트 ──────────────────────────────────
@@ -567,6 +571,11 @@ io.on('connection', (socket) => {
   }
   ipSet.add(socket.id);
   console.log(`🔌 연결: ${socket.id} (${ip}) | IP 접속 수: ${ipSet.size}`);
+
+  // 접속 즉시 팀 인원수 전송 (로비 화면용)
+  const teamCounts = { red: 0, blue: 0, green: 0 };
+  Object.values(players).forEach(p => { if (teamCounts[p.team] !== undefined) teamCounts[p.team]++; });
+  socket.emit('team_counts', teamCounts);
 
   // ③ join 없이 일정 시간 경과 시 자동 kick
   const joinTimer = setTimeout(() => {
