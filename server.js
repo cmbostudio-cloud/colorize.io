@@ -22,9 +22,17 @@ const io = new Server(server, {
     },
     methods: ['GET', 'POST'],
   },
-  maxHttpBufferSize: 1e4,  // 패킷 최대 10KB
+  maxHttpBufferSize: 5e6,  // 5MB — init 타일 전송(~30KB) 충분히 수용
   pingTimeout:  60000,
   pingInterval: 25000,
+});
+
+// ── 프로세스 크래시 방지 ─────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('💥 uncaughtException:', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('💥 unhandledRejection:', reason);
 });
 
 // ── IP 블랙리스트 ─────────────────────────────────────
@@ -353,7 +361,8 @@ function resetMap() {
   });
   tileOwners.clear();
   bullets = {};
-  io.emit('round_reset', { tiles });
+  // round_reset: 초기화된 맵 = 모두 null → tilesPacked는 빈 배열
+  io.emit('round_reset', { tilesPacked: [] });
 }
 
 // 라운드 종료 처리
@@ -756,9 +765,17 @@ io.on('connection', (socket) => {
       xp:              prevXp,
     };
 
+    // tiles 희소 인코딩: null이 대부분인 배열을 [{x,y,team}] 형태로 압축
+    const tilesPacked = [];
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        if (tiles[y][x]) tilesPacked.push({ x, y, team: tiles[y][x] });
+      }
+    }
+
     socket.emit('init', {
       id:            socket.id,
-      tiles,
+      tilesPacked,
       invincibleMs:  INVINCIBLE_MS,
       round: { num: round.num, phase: round.phase, endsAt: round.endsAt },
       xp:            prevXp,
