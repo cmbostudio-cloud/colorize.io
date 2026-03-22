@@ -11,7 +11,7 @@ const server = http.createServer(app);
 app.set('trust proxy', 1);
 
 // 허용 오리진: 환경변수 우선, 없으면 Railway 기본 도메인
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://colorizeio-production.up.railway.app';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://daubsio-production.up.railway.app';
 
 const io = new Server(server, {
   cors: {
@@ -133,7 +133,7 @@ app.get('/sw.js', (req, res) => {
   res.setHeader('Service-Worker-Allowed', '/');
   res.setHeader('Cache-Control', 'no-store');
   res.send(`
-const CACHE_VERSION = 'colorize-v${Date.now()}';
+const CACHE_VERSION = 'daubs-v${Date.now()}';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(
@@ -169,7 +169,7 @@ self.addEventListener('fetch', e => {
 // ── manifest.json ──
 app.get('/manifest.json', (req, res) => {
   res.json({
-    name: 'colorize.io', short_name: 'colorize',
+    name: 'daubs.io', short_name: 'daubs',
     description: 'Paint tiles · Claim your land',
     start_url: '/', display: 'standalone',
     background_color: '#F7F5F0', theme_color: '#F7F5F0',
@@ -998,5 +998,5 @@ function sanitizePlayer(p) {
 // ── 서버 시작 ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🎨 colorize.io 서버 실행 중 → http://localhost:${PORT}`);
+  console.log(`🎨 daubs.io 서버 실행 중 → http://localhost:${PORT}`);
 });
