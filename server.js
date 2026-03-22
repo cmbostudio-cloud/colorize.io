@@ -331,6 +331,11 @@ let players = {};
 let bullets = {};
 let bulletIdCounter = 0;
 
+// ── 타일 소유권 추적 ──────────────────────────────────
+const personalTileSets  = new Map(); // socketId → Set<"x,y">
+const tileOwners        = new Map(); // "x,y"    → socketId  (O(1) 역방향)
+const pendingTilePaints = new Map(); // "x,y"    → {x,y,team} (배치 flush용)
+
 // ── 라운드 상태 ──────────────────────────────────────
 const round = {
   num:       1,                        // 현재 라운드 번호
@@ -462,8 +467,7 @@ function tileAt(x, y) {
   return tiles[y][x];
 }
 
-// tile_paint 배치 — 매 틱마다 모아서 일괄 전송 (패킷 폭발 방지)
-const pendingTilePaints = new Map(); // key("x,y") → {x,y,team}
+// ── 타일 소유권 함수 ──────────────────────────────────
 
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
