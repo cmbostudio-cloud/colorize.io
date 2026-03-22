@@ -324,6 +324,7 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
   // upgrades: { speed:0, firerate:0, bulletspeed:0, range:0, shield:0 }
   const[upgrades,setUpgrades]=useState({speed:0,firerate:0,bulletspeed:0,range:0,shield:0});
   const[showUpgradePanel,setShowUpgradePanel]=useState(false);
+  const[showMobileUpgrade,setShowMobileUpgrade]=useState(false);
   const upgradesRef=useRef({speed:0,firerate:0,bulletspeed:0,range:0,shield:0});
 
   // 스탯: upgrades ref에서 실시간 계산
@@ -687,7 +688,10 @@ function Game({playerName,playerTeam,lang,setLang,socketRef,chatMsgs,setChatMsgs
         setUpgrades(prev=>{
           const totalSpent=Object.values(prev).reduce((a,b)=>a+b,0);
           const totalPoints=calcStatPoints(newLv);
-          if(totalPoints>totalSpent) setShowUpgradePanel(true);
+          if(totalPoints>totalSpent){
+            if(isMobile()) setShowMobileUpgrade(true);
+            else setShowUpgradePanel(true);
+          }
           return prev;
         });
       }
@@ -895,7 +899,7 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
             <div className="hud-level-row">
               <div className="hud-level">Lv.{level}</div>
               <div className="hud-xp-text" ref={xpTextRef}>0/100</div>
-              {(()=>{const pts=calcStatPoints(level)-Object.values(upgrades).reduce((a,b)=>a+b,0);return pts>0?<button className="hud-upgrade-btn" onClick={()=>setShowUpgradePanel(true)}>{pts}</button>:null;})()}
+              {(()=>{const pts=calcStatPoints(level)-Object.values(upgrades).reduce((a,b)=>a+b,0);return pts>0?<button className="hud-upgrade-btn" onClick={()=>mobile?setShowMobileUpgrade(true):setShowUpgradePanel(true)}>{pts}</button>:null;})()}
             </div>
             <div className="hud-xp-track">
               <div className="hud-xp-fill" ref={xpFillRef} style={{width:'0%',background:TEAM_CSS[playerTeam]}}/>
@@ -972,6 +976,54 @@ const onMM=e=>{const r=cv.getBoundingClientRect();s.mousePos={x:(e.clientX-r.lef
             <div className="joystick-area left" ref={leftJoyRef}><div className="joystick-base"><div className="joystick-stick"/></div><div className="joystick-label">{t.joystick_move}</div></div>
             <div className="joystick-area right" ref={rightJoyRef}><div className="joystick-base"><div className="joystick-stick"/></div><div className="joystick-label">{t.joystick_shoot}</div></div>
           </>
+        )}
+
+        {/* 모바일 업그레이드 슬라이드업 시트 */}
+        {mobile&&showMobileUpgrade&&(
+          <div className="mob-upgrade-overlay" onClick={e=>e.target===e.currentTarget&&setShowMobileUpgrade(false)}>
+            <div className="mob-upgrade-sheet">
+              <div className="mob-upgrade-handle"/>
+              <div className="mob-upgrade-header">
+                <span className="mob-upgrade-title">⬆️ {lang==='ko'?'능력치 강화':lang==='ja'?'強化':lang==='zh'?'升级':'Upgrade'}</span>
+                {(()=>{const pts=calcStatPoints(level)-Object.values(upgrades).reduce((a,b)=>a+b,0);return pts>0&&<span className="mob-upgrade-pts">{pts} {lang==='ko'?'포인트':lang==='ja'?'pt':lang==='zh'?'点':'pts'}</span>})()}
+                <button className="mob-upgrade-close" onClick={()=>setShowMobileUpgrade(false)}>✕</button>
+              </div>
+              <div className="mob-upgrade-list">
+                {UPGRADES.map(up=>{
+                  const curLv=upgrades[up.id]||0;
+                  const maxed=curLv>=up.maxLv;
+                  const avail=calcStatPoints(level)-Object.values(upgrades).reduce((a,b)=>a+b,0);
+                  const canUp=avail>0&&!maxed;
+                  return(
+                    <div key={up.id} className={`mob-upgrade-row${maxed?' maxed':''}`}>
+                      <div className="mob-upgrade-icon">{up.icon}</div>
+                      <div className="mob-upgrade-info">
+                        <div className="mob-upgrade-name">{up.label[lang]||up.label.en}</div>
+                        <div className="mob-upgrade-desc">{up.desc[lang]||up.desc.en}</div>
+                        <div className="mob-upgrade-stars">
+                          {Array.from({length:up.maxLv}).map((_,i)=>(
+                            <div key={i} className={`mob-upgrade-star${i<curLv?' filled':''}`}/>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        className={`mob-upgrade-btn${canUp?' active':''}`}
+                        onClick={()=>{
+                          if(!canUp) return;
+                          setUpgrades(prev=>{
+                            const next={...prev,[up.id]:(prev[up.id]||0)+1};
+                            upgradesRef.current=next;
+                            return next;
+                          });
+                        }}
+                        disabled={!canUp}
+                      >{maxed?'MAX':'＋'}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* 라운드 종료 오버레이 */}
