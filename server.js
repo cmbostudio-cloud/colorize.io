@@ -6,11 +6,33 @@ const fs      = require('fs');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
-  cors: { origin: '*' },
-  maxHttpBufferSize: 1e4,  // 패킷 최대 10KB
-  pingTimeout:  60000,     // 60초 (넉넉하게)
-  pingInterval: 25000,     // 25초마다 ping
+
+// Railway 리버스 프록시 신뢰 (IP 스푸핑 방지 — Railway는 1단계 프록시)
+app.set('trust proxy', 1);
+
+// 허용 오리진: 환경변수 우선, 없으면 Railway 기본 도메인
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://daubsio-production.up.railway.app';
+
+const io = new Server(server, {
+  cors: {
+    origin: (origin, cb) => {
+      // origin이 없으면 같은 도메인 요청 (curl, 서버 내부) → 허용
+      if (!origin || origin === ALLOWED_ORIGIN) return cb(null, true);
+      cb(new Error(`CORS blocked: ${origin}`));
+    },
+    methods: ['GET', 'POST'],
+  },
+  maxHttpBufferSize: 5e6,  // 5MB — init 타일 전송(~30KB) 충분히 수용
+  pingTimeout:  60000,
+  pingInterval: 25000,
+});
+
+// ── 프로세스 크래시 방지 ─────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('💥 uncaughtException:', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('💥 unhandledRejection:', reason);
 });
 
 // ── IP 블랙리스트 ─────────────────────────────────────
@@ -26,9 +48,7 @@ const HTTP_RATE_MAX    = 300;        // 1분에 최대 300 요청
 const HTTP_RATE_BAN    = 60 * 1000; // 초과 시 1분 차단
 
 app.use((req, res, next) => {
-  const ip =
-    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-    req.socket.remoteAddress;
+  const ip = req.ip || req.socket.remoteAddress;
 
   // 블랙리스트 차단
   if (IP_BLACKLIST.has(ip)) {
@@ -113,7 +133,7 @@ app.get('/sw.js', (req, res) => {
   res.setHeader('Service-Worker-Allowed', '/');
   res.setHeader('Cache-Control', 'no-store');
   res.send(`
-const CACHE_VERSION = 'colorize-v${Date.now()}';
+const CACHE_VERSION = 'daubs-v${Date.now()}';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(
@@ -149,7 +169,7 @@ self.addEventListener('fetch', e => {
 // ── manifest.json ──
 app.get('/manifest.json', (req, res) => {
   res.json({
-    name: 'colorize.io', short_name: 'colorize',
+    name: 'daubs.io', short_name: 'daubs',
     description: 'Paint tiles · Claim your land',
     start_url: '/', display: 'standalone',
     background_color: '#F7F5F0', theme_color: '#F7F5F0',
@@ -163,29 +183,32 @@ app.get('/manifest.json', (req, res) => {
 });
 
 // ── 상수 ────────────────────────────────────────────
-const GRID_W        = 40;
-const GRID_H        = 30;
+const GRID_W        = 80;
+const GRID_H        = 60;
 const TILE_SIZE     = 40;
 const MOVE_SPEED    = 3;
 const BULLET_SPEED  = 12;
 const BULLET_RADIUS = 7;
 const PLAYER_RADIUS = 14;
-const SHOOT_COOLDOWN    = 1000;
-const BULLET_LIFETIME   = 1000;
+const SHOOT_COOLDOWN    = 380;  // 클라이언트 최대 업그레이드(firerate Lv5 = 400ms)보다 살짝 낮게
+const BULLET_LIFETIME   = 2000;  // range Lv5 최대치(1000*2.0=2000ms) — 클라가 업그레이드에 따라 일찍 제거
 const TICK_RATE         = 1000 / 30;
 const INVINCIBLE_MS     = 5000;  // 리스폰 후 무적 시간
 const TILE_LOSS_RATIO   = 0.15;  // 사망 시 타일 손실 비율
 const TILE_LOSS_MIN     = 3;     // 최소 손실 타일 수
 const TILE_LOSS_MAX     = 50;    // 최대 손실 타일 수
-const ROUND_MS          = 3 * 60 * 1000; // 3분 라운드
+
+// ── 라운드 상수 ──────────────────────────────────────
+const ROUND_DURATION_MS  = 10 * 60 * 1000; // 10분
+const ROUND_BREAK_MS     = 15 * 1000;       // 라운드 사이 대기 15초
 
 // ── 보안 상수 ────────────────────────────────────────
 const MAX_CONNS_PER_IP   = 3;     // IP당 최대 동시 접속
 const JOIN_TIMEOUT_MS    = 8000;  // 접속 후 join 없으면 kick
 const MOVE_RATE_LIMIT    = 120;   // 초당 최대 move (60fps * 2배 여유)
-const SHOOT_RATE_LIMIT   = 2;     // 초당 최대 shoot (쿨다운 1초이므로 여유 1개)
+const SHOOT_RATE_LIMIT   = 4;     // 초당 최대 shoot — 클라이언트 firerate 업그레이드 최대 속도(400ms) 고려
 const CHAT_RATE_LIMIT    = 2;     // 초당 최대 채팅
-const PAINT_RATE_LIMIT   = 30;    // 초당 최대 paint_tile
+// paint_tile은 서버 move 핸들러에서 직접 처리 — 별도 rate limit 불필요
 const PING_RATE_LIMIT    = 1;     // 초당 최대 ping_c
 const RATE_WINDOW_MS     = 1000;  // rate limit 집계 윈도우
 const MAX_VIOLATIONS     = 50;    // 위반 누적 시 kick (화이트해커 권고값)
@@ -211,10 +234,13 @@ const rateLimiters  = new Map(); // socketId → counters
 
 // 소켓별 위반 카운트
 const violations    = new Map(); // socketId → { count, decayTimer }
+// 위반 로그 throttle — IP별 마지막 로그 시각 (초당 폭발 방지)
+const violationLogThrottle = new Map(); // ip → lastLoggedAt
+const VIOLATION_LOG_INTERVAL = 5000; // 5초에 1번만 로그 출력
 
 // ── 보안 헬퍼 ────────────────────────────────────────
 
-// IP 추출 (프록시 환경 대응)
+// IP 추출 (trust proxy 1 설정으로 Railway가 주입한 x-forwarded-for 첫 번째 값만 신뢰)
 function getIp(socket) {
   return (
     socket.handshake.headers['x-forwarded-for']?.split(',')[0].trim() ||
@@ -235,7 +261,7 @@ function checkRate(socketId, key, limit) {
   return counters[key].count <= limit;
 }
 
-// 위반 처리 — 로그만 남기고 kick은 명시적 임계값 초과 시만
+// 위반 처리 — MAX_VIOLATIONS 초과 시 kick
 function addViolation(socket, reason) {
   const id = socket.id;
   if (!violations.has(id)) {
@@ -248,9 +274,21 @@ function addViolation(socket, reason) {
   }
   const v = violations.get(id);
   v.count++;
-  console.warn(`⚠️  위반 [${getIp(socket)}] ${reason} (누적 ${v.count})`);
-  // kick은 명백한 악성 패킷(join 전 이벤트, 비정상 페이로드)에만 적용
-  // rate limit 오탐으로 정상 유저가 kick되는 문제 방지
+
+  // 로그 throttle — 같은 IP는 5초에 1번만 출력
+  const ip = getIp(socket);
+  const now = Date.now();
+  const lastLogged = violationLogThrottle.get(ip) ?? 0;
+  if (now - lastLogged >= VIOLATION_LOG_INTERVAL) {
+    violationLogThrottle.set(ip, now);
+    console.warn(`⚠️  위반 [${ip}] ${reason} (누적 ${v.count})`);
+  }
+
+  if (v.count >= MAX_VIOLATIONS) {
+    console.warn(`🚫 위반 한도 초과 kick: ${ip}`);
+    socket.emit('kicked', { reason: 'Too many violations' });
+    socket.disconnect(true);
+  }
 }
 
 // 페이로드 타입 검증 유틸
@@ -305,43 +343,109 @@ let players = {};
 let bullets = {};
 let bulletIdCounter = 0;
 
-// ── 라운드 상태 ───────────────────────────────────────
-let roundStartTime = Date.now();
-let roundNumber    = 1;
+// ── 타일 소유권 추적 ──────────────────────────────────
+const personalTileSets  = new Map(); // socketId → Set<"x,y">
+const tileOwners        = new Map(); // "x,y"    → socketId  (O(1) 역방향)
+const pendingTilePaints = new Map(); // "x,y"    → {x,y,team} (배치 flush용)
 
-function getRoundTimeLeft() {
-  return Math.max(0, ROUND_MS - (Date.now() - roundStartTime));
+// ── 라운드 상태 ──────────────────────────────────────
+const round = {
+  num:       1,                        // 현재 라운드 번호
+  phase:     'playing',                // 'playing' | 'break'
+  endsAt:    Date.now() + ROUND_DURATION_MS,  // 라운드 종료 시각
+};
+
+function roundTimeLeft() {
+  return Math.max(0, round.endsAt - Date.now());
 }
 
-// 라운드 종료: 집계 → 브로드캐스트 → 개인 스탯 초기화
+// 레벨 계산: 1.1배 스케일 누적합 기반
+// xpForLevel(lv) = floor(100 * 1.1^(lv-1))
+function xpForLevel(lv) {
+  return Math.floor(100 * Math.pow(1.1, lv - 1));
+}
+function calcLevel(totalXp) {
+  let lv = 1;
+  let accumulated = 0;
+  while (true) {
+    const needed = xpForLevel(lv);
+    if (accumulated + needed > (totalXp ?? 0)) break;
+    accumulated += needed;
+    lv++;
+    if (lv > 9999) break;
+  }
+  return lv;
+}
+
+// 틱당 플레이어별 XP 델타 누적 (배치 flush용)
+const pendingXpDeltas = new Map(); // socketId → delta
+
+// 맵 초기화
+function resetMap() {
+  tiles = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(null));
+  personalTileSets.forEach((set, sid) => {
+    set.clear();
+    if (players[sid]) players[sid].personalTiles = 0;
+  });
+  tileOwners.clear();
+  bullets = {};
+  // round_reset: 초기화된 맵 = 모두 null → tilesPacked는 빈 배열
+  io.emit('round_reset', { tilesPacked: [] });
+}
+
+// 라운드 종료 처리
 function endRound() {
-  const teamScores = getScores();
+  round.phase = 'break';
 
-  // 개인 순위: 이번 라운드 획득 타일 수 기준
-  const playerRanks = Object.values(players)
-    .map(p => ({ id: p.id, name: p.name, team: p.team, gained: p.roundGained ?? 0 }))
-    .sort((a, b) => b.gained - a.gained);
+  const teamTiles = { red: 0, blue: 0, green: 0 };
+  tiles.forEach(row => row.forEach(t => { if (t) teamTiles[t]++; }));
 
-  // 팀 순위
-  const teamRanks = [...TEAMS]
-    .map(t => ({ team: t, tiles: teamScores[t] }))
+  const winner = Object.entries(teamTiles).sort((a, b) => b[1] - a[1])[0][0];
+
+  const results = Object.values(players)
+    .map(p => ({ id: p.id, name: p.name, team: p.team, tiles: p.personalTiles ?? 0, level: calcLevel(p.xp), xp: p.xp ?? 0 }))
     .sort((a, b) => b.tiles - a.tiles);
 
-  io.emit('round_result', {
-    round:      roundNumber,
-    teamRanks,
-    playerRanks,
-  });
+  io.emit('round_end', { winner, teamTiles, results, breakMs: ROUND_BREAK_MS });
+  console.log(`🏁 라운드 ${round.num} 종료 — 승자: ${winner} (${teamTiles[winner]}칸)`);
 
-  // 개인 라운드 스탯 초기화
-  Object.values(players).forEach(p => { p.roundGained = 0; });
+  setTimeout(() => {
+    round.num++;
+    round.phase = 'playing';
+    round.endsAt = Date.now() + ROUND_DURATION_MS;
 
-  roundNumber++;
-  roundStartTime = Date.now();
+    // XP · 레벨 초기화
+    Object.values(players).forEach(p => { p.xp = 0; });
+
+    resetMap();
+
+    // round_start를 먼저 emit해서 클라이언트가 타이머·상태를 업데이트하게 함
+    io.emit('round_start', { endsAt: round.endsAt });
+
+    // respawn은 100ms 뒤 — 클라이언트가 round_reset/round_start를 처리한 후 적용
+    setTimeout(() => {
+      Object.entries(players).forEach(([sid, p]) => {
+        const sp = spawnPosition();
+        p.x = sp.x; p.y = sp.y;
+        p.invincibleUntil = Date.now() + INVINCIBLE_MS;
+        io.to(sid).emit('respawn', { x: p.x, y: p.y, invincibleMs: INVINCIBLE_MS });
+      });
+    }, 100);
+
+    console.log(`▶️  라운드 ${round.num} 시작`);
+  }, ROUND_BREAK_MS);
 }
 
-// 3분마다 라운드 종료
-setInterval(endRound, ROUND_MS);
+// 라운드 타이머 틱 (1초마다) — 중복 실행 방지 플래그 포함
+let endingRound = false;
+setInterval(() => {
+  if (round.phase !== 'playing' || endingRound) return;
+  if (Date.now() >= round.endsAt) {
+    endingRound = true;
+    endRound();
+    setTimeout(() => { endingRound = false; }, ROUND_BREAK_MS + 5000);
+  }
+}, 1000);
 
 // 30초마다 자동 저장
 setInterval(saveTiles, SAVE_INTERVAL);
@@ -353,16 +457,31 @@ process.on('SIGTERM', () => { saveTiles(); process.exit(0); });
 // ── 유틸 ─────────────────────────────────────────────
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-function spawnPosition(team) {
-  const spawns = {
-    red:   { x: TILE_SIZE * 3,            y: TILE_SIZE * 3 },
-    blue:  { x: TILE_SIZE * (GRID_W - 3), y: TILE_SIZE * 3 },
-    green: { x: TILE_SIZE * (GRID_W / 2), y: TILE_SIZE * (GRID_H - 3) },
-  };
-  const s = spawns[team];
+function spawnPosition() {
+  const SPAWN_MARGIN   = 2;           // 맵 가장자리에서 최소 2타일 안쪽
+  const MIN_DIST       = TILE_SIZE * 5; // 다른 플레이어와 최소 5타일 거리
+  const MAX_ATTEMPTS   = 30;           // 최대 시도 횟수
+
+  const minX = TILE_SIZE * SPAWN_MARGIN + PLAYER_RADIUS;
+  const maxX = TILE_SIZE * (GRID_W - SPAWN_MARGIN) - PLAYER_RADIUS;
+  const minY = TILE_SIZE * SPAWN_MARGIN + PLAYER_RADIUS;
+  const maxY = TILE_SIZE * (GRID_H - SPAWN_MARGIN) - PLAYER_RADIUS;
+
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    const x = minX + Math.random() * (maxX - minX);
+    const y = minY + Math.random() * (maxY - minY);
+
+    // 모든 플레이어와 최소 거리 확인
+    const tooClose = Object.values(players).some(p =>
+      Math.hypot(p.x - x, p.y - y) < MIN_DIST
+    );
+    if (!tooClose) return { x, y };
+  }
+
+  // 30번 시도 후에도 못 찾으면 그냥 랜덤 위치 반환
   return {
-    x: clamp(s.x + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_W * TILE_SIZE - PLAYER_RADIUS),
-    y: clamp(s.y + (Math.random() - 0.5) * TILE_SIZE * 2, PLAYER_RADIUS, GRID_H * TILE_SIZE - PLAYER_RADIUS),
+    x: minX + Math.random() * (maxX - minX),
+    y: minY + Math.random() * (maxY - minY),
   };
 }
 
@@ -371,44 +490,67 @@ function tileAt(x, y) {
   return tiles[y][x];
 }
 
-// [FIX-S1] paintTile: owner 옵션 파라미터로 개인 획득 타일 추적
+// ── 타일 소유권 함수 ──────────────────────────────────
+
 function paintTile(tx, ty, team, ownerId) {
   if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) return;
   if (tiles[ty][tx] === team) return;
-  tiles[ty][tx] = team;
-  io.emit('tile_paint', { x: tx, y: ty, team });
-  // 개인 획득 타일 카운트 (중립→팀, 타팀→팀 모두 카운트)
-  if (ownerId && players[ownerId]) {
-    players[ownerId].roundGained = (players[ownerId].roundGained ?? 0) + 1;
-  }
-}
 
-function getScores() {
-  const s = { red: 0, blue: 0, green: 0 };
-  tiles.forEach(row => row.forEach(t => { if (t) s[t]++; }));
-  return s;
-}
+  const key = `${tx},${ty}`;
 
-// ── 사망 시 타일 손실 ────────────────────────────────────
-function loseTiles(team) {
-  // 해당 팀 타일 좌표 수집
-  const owned = [];
-  for (let y = 0; y < GRID_H; y++) {
-    for (let x = 0; x < GRID_W; x++) {
-      if (tiles[y][x] === team) owned.push({ x, y });
+  // 기존 소유자 O(1) 조회 → Set에서 제거 + 카운터 감소
+  const prevOwner = tileOwners.get(key);
+  if (prevOwner) {
+    const prevSet = personalTileSets.get(prevOwner);
+    if (prevSet) prevSet.delete(key);
+    if (players[prevOwner]) {
+      players[prevOwner].personalTiles = Math.max(0, (players[prevOwner].personalTiles ?? 0) - 1);
     }
+    tileOwners.delete(key);
   }
+
+  tiles[ty][tx] = team;
+
+  // 새 소유자 등록
+  if (ownerId && players[ownerId] && team) {
+    if (!personalTileSets.has(ownerId)) personalTileSets.set(ownerId, new Set());
+    personalTileSets.get(ownerId).add(key);
+    tileOwners.set(key, ownerId);
+    players[ownerId].personalTiles = (players[ownerId].personalTiles ?? 0) + 1;
+
+    // XP 지급 — 개별 emit 없이 델타 누적 (배치 flush에서 전송)
+    players[ownerId].xp = (players[ownerId].xp ?? 0) + 1;
+    pendingXpDeltas.set(ownerId, (pendingXpDeltas.get(ownerId) ?? 0) + 1);
+  }
+
+  // 즉시 emit 대신 배치 큐에 추가 (같은 타일은 마지막 값으로 덮어씀)
+  pendingTilePaints.set(key, { x: tx, y: ty, team });
+}
+
+function loseTiles(killedSocketId) {
+  const ownedSet = personalTileSets.get(killedSocketId);
+  if (!ownedSet || ownedSet.size === 0) return;
+
+  const owned = [...ownedSet].map(key => {
+    const [x, y] = key.split(',').map(Number);
+    return { x, y };
+  });
   if (owned.length === 0) return;
 
   const loss = clamp(Math.round(owned.length * TILE_LOSS_RATIO), TILE_LOSS_MIN, TILE_LOSS_MAX);
-  // Fisher-Yates 셔플 후 앞 loss개 제거
   for (let i = owned.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [owned[i], owned[j]] = [owned[j], owned[i]];
   }
   owned.slice(0, loss).forEach(({ x, y }) => {
+    const k = `${x},${y}`;
     tiles[y][x] = null;
-    io.emit('tile_paint', { x, y, team: null });
+    ownedSet.delete(k);
+    tileOwners.delete(k);
+    if (players[killedSocketId]) {
+      players[killedSocketId].personalTiles = Math.max(0, (players[killedSocketId].personalTiles ?? 0) - 1);
+    }
+    pendingTilePaints.set(k, { x, y, team: null });
   });
 }
 
@@ -442,9 +584,9 @@ function checkBulletCollisions() {
       if (p.invincibleUntil && Date.now() < p.invincibleUntil) return;
       const dist = Math.hypot(p.x - b.x, p.y - b.y);
       if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
-        // 타일 손실 적용
-        loseTiles(p.team);
-        const spawn = spawnPosition(p.team);
+        // 타일 손실 적용 (피격 플레이어 개인 타일만)
+        loseTiles(pid);
+        const spawn = spawnPosition();
         p.x = spawn.x; p.y = spawn.y;
         // 리스폰 시 무적 부여
         p.invincibleUntil = Date.now() + INVINCIBLE_MS;
@@ -499,8 +641,33 @@ function getTilesOnSegment(x0, y0, x1, y1) {
   return result;
 }
 
-// ── 서버 틱 (총알 이동) ───────────────────────────────
+// ── 서버 틱 (총알 이동 + tile_paint 배치 flush) ──────────
 setInterval(() => {
+  // tile_paint 배치 flush — 한 틱 안에 쌓인 변경을 한 번에 전송
+  if (pendingTilePaints.size > 0) {
+    const batch = [...pendingTilePaints.values()];
+    pendingTilePaints.clear();
+    if (batch.length === 1) {
+      io.emit('tile_paint', batch[0]);
+    } else {
+      io.emit('tiles_batch', batch);
+    }
+  }
+
+  // XP 델타 flush — 플레이어별로 개별 emit (레벨업 감지 포함)
+  if (pendingXpDeltas.size > 0) {
+    pendingXpDeltas.forEach((delta, sid) => {
+      const p = players[sid];
+      if (!p) return;
+      const newXp  = p.xp ?? 0;
+      const newLv  = calcLevel(newXp);
+      const prevLv = calcLevel(newXp - delta); // 이번 틱 이전 레벨
+      const leveled = newLv > prevLv;
+      io.to(sid).emit('xp_update', { xp: newXp, level: newLv, leveled });
+    });
+    pendingXpDeltas.clear();
+  }
+
   if (Object.keys(bullets).length === 0) return;
 
   const now = Date.now();
@@ -530,22 +697,27 @@ setInterval(() => {
 // ── 개인 순위표 브로드캐스트 (2초마다) ──────────────────
 setInterval(() => {
   if (Object.keys(players).length === 0) return;
-  // 팀별 타일 집계
-  const tileCount = {}; // playerId → count (이번 라운드 획득)
-  // 전체 타일에서 팀별 소유 타일 수
   const teamTiles = { red: 0, blue: 0, green: 0 };
   tiles.forEach(row => row.forEach(t => { if (t) teamTiles[t]++; }));
 
+  const teamCounts = { red: 0, blue: 0, green: 0 };
+  Object.values(players).forEach(p => { if (teamCounts[p.team] !== undefined) teamCounts[p.team]++; });
+
   const leaderboard = Object.values(players)
     .map(p => ({
-      id:     p.id,
-      name:   p.name,
-      team:   p.team,
-      gained: p.roundGained ?? 0,
+      id:    p.id,
+      name:  p.name,
+      team:  p.team,
+      tiles: p.personalTiles ?? 0,
+      level: calcLevel(p.xp),
+      xp:    p.xp ?? 0,
     }))
-    .sort((a, b) => b.gained - a.gained);
+    .sort((a, b) => b.tiles - a.tiles);
 
-  io.emit('leaderboard', { leaderboard, teamTiles });
+  io.emit('leaderboard', {
+    leaderboard, teamTiles, teamCounts,
+    round: { phase: round.phase, timeLeft: roundTimeLeft() },
+  });
 }, 2000);
 
 // ── Socket.io 이벤트 ──────────────────────────────────
@@ -578,6 +750,11 @@ io.on('connection', (socket) => {
   ipSet.add(socket.id);
   console.log(`🔌 연결: ${socket.id} (${ip}) | IP 접속 수: ${ipSet.size}`);
 
+  // 접속 즉시 팀 인원수 전송 (로비 화면용)
+  const teamCounts = { red: 0, blue: 0, green: 0 };
+  Object.values(players).forEach(p => { if (teamCounts[p.team] !== undefined) teamCounts[p.team]++; });
+  socket.emit('team_counts', teamCounts);
+
   // ③ join 없이 일정 시간 경과 시 자동 kick
   const joinTimer = setTimeout(() => {
     if (!players[socket.id]) {
@@ -599,15 +776,16 @@ io.on('connection', (socket) => {
 
     const assignedTeam = TEAMS.includes(team) ? team : 'blue';
     const isReconnect  = !!players[socket.id];
+    const prevPersonalTiles = isReconnect ? (players[socket.id].personalTiles ?? 0) : 0;
+    const prevXp            = isReconnect ? (players[socket.id].xp ?? 0) : 0;
 
-    // 재연결 시 위치·라운드 점수 유지, 신규 접속만 스폰 위치 지정
-    let spawnX, spawnY, prevGained = 0;
+    // 재연결 시 위치 유지, 신규 접속만 스폰 위치 지정
+    let spawnX, spawnY;
     if (isReconnect) {
-      spawnX      = players[socket.id].x;
-      spawnY      = players[socket.id].y;
-      prevGained  = players[socket.id].roundGained ?? 0;
+      spawnX = players[socket.id].x;
+      spawnY = players[socket.id].y;
     } else {
-      const sp = spawnPosition(assignedTeam);
+      const sp = spawnPosition();
       spawnX = sp.x; spawnY = sp.y;
     }
 
@@ -619,15 +797,25 @@ io.on('connection', (socket) => {
       y:               spawnY,
       lastShot:        0,
       invincibleUntil: Date.now() + INVINCIBLE_MS,
-      roundGained:     prevGained,
+      personalTiles:   prevPersonalTiles,
+      xp:              prevXp,
     };
+
+    // tiles 희소 인코딩: null이 대부분인 배열을 [{x,y,team}] 형태로 압축
+    const tilesPacked = [];
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        if (tiles[y][x]) tilesPacked.push({ x, y, team: tiles[y][x] });
+      }
+    }
 
     socket.emit('init', {
       id:            socket.id,
-      tiles,
+      tilesPacked,
       invincibleMs:  INVINCIBLE_MS,
-      round:         roundNumber,
-      roundTimeLeft: getRoundTimeLeft(),
+      round: { phase: round.phase, endsAt: round.endsAt },
+      xp:            prevXp,
+      level:         calcLevel(prevXp),
       players: Object.fromEntries(
         Object.entries(players).map(([id, p]) => [id, sanitizePlayer(p)])
       ),
@@ -684,39 +872,6 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('player_move', { id: socket.id, x: p.x, y: p.y, invincibleUntil: p.invincibleUntil ?? 0 });
   });
 
-  // ── paint_tile ──
-  socket.on('paint_tile', (payload) => {
-    const p = players[socket.id];
-    if (!p) return;
-
-    if (!checkRate(socket.id, 'paint', PAINT_RATE_LIMIT)) {
-      addViolation(socket, 'paint_tile: rate limit');
-      return;
-    }
-
-    if (!payload || !isFiniteNum(payload.x) || !isFiniteNum(payload.y)) {
-      addViolation(socket, 'paint_tile: invalid payload');
-      return;
-    }
-
-    const tx = Math.floor(payload.x);
-    const ty = Math.floor(payload.y);
-    if (tx < 0 || tx >= GRID_W || ty < 0 || ty >= GRID_H) {
-      addViolation(socket, 'paint_tile: out of bounds');
-      return;
-    }
-
-    // 원격 타일 페인팅 방지: 플레이어 현재 위치 기준 인접 1칸만 허용
-    const ptx = Math.floor(p.x / TILE_SIZE);
-    const pty = Math.floor(p.y / TILE_SIZE);
-    if (Math.abs(tx - ptx) > 1 || Math.abs(ty - pty) > 1) {
-      addViolation(socket, `paint_tile: remote paint (${tx},${ty}) player@(${ptx},${pty})`);
-      return;
-    }
-
-    paintTile(tx, ty, p.team, socket.id);
-  });
-
   // ── shoot ──
   socket.on('shoot', (payload) => {
     const p = players[socket.id];
@@ -744,9 +899,13 @@ io.on('connection', (socket) => {
     const len = Math.hypot(payload.dx, payload.dy);
     if (len === 0) return;
 
+    // speedMult: 클라이언트 bulletSpeed 업그레이드 배율 (1.0 ~ 1.75, 검증 후 반영)
+    const rawMult = typeof payload.speedMult === 'number' ? payload.speedMult : 1;
+    const speedMult = Math.max(1.0, Math.min(1.76, rawMult)); // Lv5 최대 1+5*0.15=1.75
+
     p.lastShot = now;
-    const ndx = (payload.dx / len) * BULLET_SPEED;
-    const ndy = (payload.dy / len) * BULLET_SPEED;
+    const ndx = (payload.dx / len) * BULLET_SPEED * speedMult;
+    const ndy = (payload.dy / len) * BULLET_SPEED * speedMult;
 
     const id = `b_${bulletIdCounter++}`;
     bullets[id] = {
@@ -803,8 +962,14 @@ io.on('connection', (socket) => {
       if (ipSet2.size === 0) ipConnections.delete(ip);
     }
 
-    // rate limit / violation 정리
+    // rate limit / violation / personalTileSet / tileOwners 정리
     rateLimiters.delete(socket.id);
+    violationLogThrottle.delete(getIp(socket));
+    const ownedSet = personalTileSets.get(socket.id);
+    if (ownedSet) {
+      ownedSet.forEach(key => tileOwners.delete(key));
+      personalTileSets.delete(socket.id);
+    }
     const v = violations.get(socket.id);
     if (v) { clearInterval(v.decayTimer); violations.delete(socket.id); }
 
@@ -832,6 +997,12 @@ function sanitizePlayer(p) {
 
 // ── 서버 시작 ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+// SPA catch-all (sw.js, manifest.json 제외)
+app.get('*', (req, res, next) => {
+  if (req.path === '/sw.js' || req.path === '/manifest.json') return next();
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 server.listen(PORT, () => {
-  console.log(`🎨 colorize.io 서버 실행 중 → http://localhost:${PORT}`);
+  console.log(`🎨 daubs.io 서버 실행 중 → http://localhost:${PORT}`);
 });

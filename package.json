@@ -1,12 +1,12 @@
 {
-  "name": "colorize.io",
+  "name": "daubs.io",
   "version": "1.0.0",
-  "description": "colorize.io - 땅따먹기 게임",
+  "description": "daubs.io - 땅따먹기 게임",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "npx vite build && node server.js",
     "dev": "node server.js",
-    "build": "vite build",
+    "build": "npx vite build",
     "preview": "vite preview"
   },
   "dependencies": {
